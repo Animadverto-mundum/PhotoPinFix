@@ -1,0 +1,36 @@
+{
+  "id": 1785,
+  "file": "nikon_d1x.NEF",
+  "make": "Nikon",
+  "model": "D1X",
+  "file_type": "NEF",
+  "camera_mode": "12bit 12bit compressed (3.0422960725076)",
+  "remark": "please upload the full set :)",
+  "catalog_date": "2017-10-08",
+  "source_url": "https://raw.pixls.us/getfile.php/1785/nice/Nikon - D1X - 12bit 12bit compressed (3.0422960725076).NEF",
+  "sha256": "ff80b83537a909e6adabeb091a12e4d5c83993e011672705366e7de39601695b",
+  "approx_mib": 3.71,
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "author": null,
+  "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+  "bytes": 3886374,
+  "local_file": "raw-sources/nikon_d1x.NEF",
+  "embedded_preview": {
+    "tag": "PreviewImage",
+    "bytes": 27540,
+    "format": "JPEG",
+    "width": 570,
+    "height": 375
+  },
+  "original_metadata": {
+    "SourceFile": "raw-sources/nikon_d1x.NEF",
+    "FileType": "NEF",
+    "Make": "NIKON CORPORATION",
+    "Model": "NIKON D1X",
+    "Copyright": "Copyright,",
+    "DateTimeOriginal": "2004:07:30 12:23:24",
+    "ImageWidth": 4028,
+    "ImageHeight": 1324
+  }
+}

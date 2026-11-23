@@ -1,0 +1,35 @@
+{
+  "id": 2102,
+  "file": "canon_40d.CR2",
+  "make": "Canon",
+  "model": "EOS 40D",
+  "file_type": "CR2",
+  "camera_mode": "sRAW2 (sRAW) (3:2)",
+  "remark": "",
+  "catalog_date": "2017-12-18",
+  "source_url": "https://raw.pixls.us/getfile.php/2102/nice/Canon - EOS 40D - sRAW2 (sRAW) (3:2).CR2",
+  "sha256": "ba644e7dd2abe74eca260e67f0206ff113bf0f62e710f8130611e964d6be5bf1",
+  "approx_mib": 5.54,
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "author": null,
+  "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+  "bytes": 5805950,
+  "local_file": "raw-sources/canon_40d.CR2",
+  "embedded_preview": {
+    "tag": "PreviewImage",
+    "bytes": 366439,
+    "format": "JPEG",
+    "width": 1936,
+    "height": 1288
+  },
+  "original_metadata": {
+    "SourceFile": "raw-sources/canon_40d.CR2",
+    "FileType": "CR2",
+    "Make": "Canon",
+    "Model": "Canon EOS 40D",
+    "DateTimeOriginal": "2017:12:18 20:05:21",
+    "ImageWidth": 1936,
+    "ImageHeight": 1288
+  }
+}

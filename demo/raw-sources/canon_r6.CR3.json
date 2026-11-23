@@ -1,0 +1,38 @@
+{
+  "id": 4659,
+  "file": "canon_r6.CR3",
+  "make": "Canon",
+  "model": "EOS R6",
+  "file_type": "CR3",
+  "camera_mode": "3:2",
+  "remark": "CRAW 1.6x crop",
+  "catalog_date": "2021-05-14",
+  "source_url": "https://raw.pixls.us/getfile.php/4659/nice/Canon - EOS R6 - 3:2.CR3",
+  "sha256": "74abb0a113d075ad9887a058082f40dd2a938c4813a08474d82356f11a027778",
+  "approx_mib": 5.03,
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "author": "Johannes Kimmel",
+  "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+  "bytes": 5273174,
+  "local_file": "raw-sources/canon_r6.CR3",
+  "embedded_preview": {
+    "tag": "JpgFromRaw",
+    "bytes": 962675,
+    "format": "JPEG",
+    "width": 3408,
+    "height": 2272
+  },
+  "original_metadata": {
+    "SourceFile": "raw-sources/canon_r6.CR3",
+    "FileType": "CR3",
+    "Make": "Canon",
+    "Model": "Canon EOS R6",
+    "Artist": "Johannes Kimmel",
+    "OwnerName": "",
+    "Copyright": "CCO",
+    "DateTimeOriginal": "2021:05:12 12:21:21",
+    "ImageWidth": 3408,
+    "ImageHeight": 2272
+  }
+}

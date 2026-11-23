@@ -1,0 +1,35 @@
+{
+  "id": 1803,
+  "file": "olympus_e3.ORF",
+  "make": "Olympus",
+  "model": "E-3",
+  "file_type": "ORF",
+  "camera_mode": "16bit (4:3)",
+  "remark": "",
+  "catalog_date": "2017-10-10",
+  "source_url": "https://raw.pixls.us/getfile.php/1803/nice/Olympus - E-3 - 16bit (4:3).ORF",
+  "sha256": "ba4605bbd9fe9b77971da444bcdb1698904c0ad4ebdf9dd42dd45ab255f3f6d4",
+  "approx_mib": 9.22,
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "author": null,
+  "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+  "bytes": 9664842,
+  "local_file": "raw-sources/olympus_e3.ORF",
+  "embedded_preview": {
+    "tag": "PreviewImage",
+    "bytes": 419789,
+    "format": "JPEG",
+    "width": 1600,
+    "height": 1200
+  },
+  "original_metadata": {
+    "SourceFile": "raw-sources/olympus_e3.ORF",
+    "FileType": "ORF",
+    "Make": "OLYMPUS IMAGING CORP.",
+    "Model": "E-3",
+    "DateTimeOriginal": "2008:03:09 08:22:53",
+    "ImageWidth": 3720,
+    "ImageHeight": 2800
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": 7010,
+  "file": "panasonic_lx7.RW2",
+  "make": "Panasonic",
+  "model": "DMC-LX7",
+  "file_type": "RW2",
+  "camera_mode": "3:2",
+  "remark": "With \"intelligent zoom\" - https://github.com/darktable-org/darktable/issues/14082#issuecomment-1815266255",
+  "catalog_date": "2023-11-18",
+  "source_url": "https://raw.pixls.us/getfile.php/7010/nice/Panasonic - DMC-LX7 - 3:2.RW2",
+  "sha256": "18dfc3877e944020299635a8c2fad61fca2485b1c9b67645a495ee870a86e599",
+  "approx_mib": 3.24,
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "author": null,
+  "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+  "bytes": 3394560,
+  "local_file": "raw-sources/panasonic_lx7.RW2",
+  "embedded_preview": {
+    "tag": "JpgFromRaw",
+    "bytes": 607744,
+    "format": "JPEG",
+    "width": 1920,
+    "height": 1280
+  },
+  "original_metadata": {
+    "SourceFile": "raw-sources/panasonic_lx7.RW2",
+    "FileType": "RW2",
+    "Make": "Panasonic",
+    "Model": "DMC-LX7",
+    "Artist": "",
+    "DateTimeOriginal": "2023:11:18 09:49:17",
+    "ImageWidth": 1888,
+    "ImageHeight": 1260
+  }
+}

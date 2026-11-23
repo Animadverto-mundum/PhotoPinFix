@@ -1,0 +1,1917 @@
+{
+  "signature": "PhotoPinFix simulated GPS test photos v1",
+  "simulated_metadata": true,
+  "warning": "GPS and capture times are invented for tests and do not describe the downloaded photographs' actual locations or dates.",
+  "defaults": {
+    "adjacent_gap_seconds": 60,
+    "reference_window_seconds": 600,
+    "session_gap_seconds": 3600
+  },
+  "fixed_file_timestamp_utc": "2020-01-02T03:04:05+00:00",
+  "photo_directory": "photos",
+  "total": 73,
+  "counts": {
+    "green": 13,
+    "yellow": 47,
+    "red": 13
+  },
+  "sources": [
+    {
+      "id": 10,
+      "source_url": "https://picsum.photos/id/10/960/640",
+      "resolved_url": "https://fastly.picsum.photos/id/10/960/640.jpg?hmac=FRZB44OcEUKbrIq_BcHT73-otPAOSDIddiritKC6W54",
+      "info_url": "https://picsum.photos/id/10/info",
+      "local_file": "sources/picsum-10.jpg",
+      "sha256": "06fdae380d835897de72d68ff2da97c7995898ab5aa11b33e2e8a6d74edf20be",
+      "note": "Public sample photograph; all fixture GPS and capture times are simulated and unrelated to its real subject."
+    },
+    {
+      "id": 11,
+      "source_url": "https://picsum.photos/id/11/960/640",
+      "resolved_url": "https://fastly.picsum.photos/id/11/960/640.jpg?hmac=oBrZ9ntb2baoXHUqPC4Xs3P4xUtB0tg57jnnMG3qHSw",
+      "info_url": "https://picsum.photos/id/11/info",
+      "local_file": "sources/picsum-11.jpg",
+      "sha256": "760b1f6c3a43bb6bb3a894d11bec7becd65fbff046611263a9252e94e633a5fa",
+      "note": "Public sample photograph; all fixture GPS and capture times are simulated and unrelated to its real subject."
+    },
+    {
+      "id": 12,
+      "source_url": "https://picsum.photos/id/12/960/640",
+      "resolved_url": "https://fastly.picsum.photos/id/12/960/640.jpg?hmac=jjHjEtTZ0iVz_qcEzaS7Cgt5jNXNPAuBQ2Zt2q4JvNk",
+      "info_url": "https://picsum.photos/id/12/info",
+      "local_file": "sources/picsum-12.jpg",
+      "sha256": "37f25c83a99dcded83c6518059e985793fa02c114a6c91291f37d084717c329a",
+      "note": "Public sample photograph; all fixture GPS and capture times are simulated and unrelated to its real subject."
+    },
+    {
+      "id": 16,
+      "source_url": "https://picsum.photos/id/16/960/640",
+      "resolved_url": "https://fastly.picsum.photos/id/16/960/640.jpg?hmac=q8TvM9_aXeGxgS0EOAWCE3u8zeNK_YuoQOZMDTP4Njg",
+      "info_url": "https://picsum.photos/id/16/info",
+      "local_file": "sources/picsum-16.jpg",
+      "sha256": "45ac83a3bd5bf0c01fafab6dbf71d9eedf3f0ee058a34fd65616d7c32f4d2387",
+      "note": "Public sample photograph; all fixture GPS and capture times are simulated and unrelated to its real subject."
+    },
+    {
+      "id": 17,
+      "source_url": "https://picsum.photos/id/17/960/640",
+      "resolved_url": "https://fastly.picsum.photos/id/17/960/640.jpg?hmac=ZCgtMJdEA-iOs-_RVecRQRFglaQUj_7DMJOhBiYHeTg",
+      "info_url": "https://picsum.photos/id/17/info",
+      "local_file": "sources/picsum-17.jpg",
+      "sha256": "586a9cc03ce908868d693fe05f074f244c90ed3cd6adae06053268ac93e69562",
+      "note": "Public sample photograph; all fixture GPS and capture times are simulated and unrelated to its real subject."
+    },
+    {
+      "id": 18,
+      "source_url": "https://picsum.photos/id/18/960/640",
+      "resolved_url": "https://fastly.picsum.photos/id/18/960/640.jpg?hmac=5uLY5od62I-lrZ8QAoEV8TZDdsMoAg8b__FnnMbU4IA",
+      "info_url": "https://picsum.photos/id/18/info",
+      "local_file": "sources/picsum-18.jpg",
+      "sha256": "49c1cdb31d1f5bd63f7e1d45c5dcf1e3c02102507d13761bf4cb6ab0230f1a0f",
+      "note": "Public sample photograph; all fixture GPS and capture times are simulated and unrelated to its real subject."
+    }
+  ],
+  "sessions": [
+    {
+      "id": 1,
+      "count": 31,
+      "start": "2026-03-01T09:00:00",
+      "end": "2026-03-01T09:15:00",
+      "cases": [
+        "15-minute-chain"
+      ]
+    },
+    {
+      "id": 2,
+      "count": 11,
+      "start": "2026-03-01T11:00:00",
+      "end": "2026-03-01T11:09:39",
+      "cases": [
+        "strict-adjacent-gap-and-green-boundary"
+      ]
+    },
+    {
+      "id": 3,
+      "count": 16,
+      "start": "2026-03-01T13:00:00",
+      "end": "2026-03-01T13:10:59",
+      "cases": [
+        "reference-window-600-601"
+      ]
+    },
+    {
+      "id": 4,
+      "count": 2,
+      "start": "2026-03-01T15:00:00",
+      "end": "2026-03-01T16:00:00",
+      "cases": [
+        "session-exact-one-hour"
+      ]
+    },
+    {
+      "id": 5,
+      "count": 1,
+      "start": "2026-03-01T17:00:01",
+      "end": "2026-03-01T17:00:01",
+      "cases": [
+        "session-over-one-hour"
+      ]
+    },
+    {
+      "id": 6,
+      "count": 3,
+      "start": "2026-03-02T10:00:00",
+      "end": "2026-03-02T10:00:00",
+      "cases": [
+        "conflicting-same-time"
+      ]
+    },
+    {
+      "id": 7,
+      "count": 3,
+      "start": "2026-03-02T11:30:00",
+      "end": "2026-03-02T11:31:00",
+      "cases": [
+        "international-date-line"
+      ]
+    },
+    {
+      "id": 8,
+      "count": 3,
+      "start": "2026-03-02T13:00:00",
+      "end": "2026-03-02T13:01:00",
+      "cases": [
+        "one-sided-future-and-provenance"
+      ]
+    },
+    {
+      "id": 9,
+      "count": 3,
+      "start": null,
+      "end": null,
+      "cases": [
+        "unknown-capture-time"
+      ]
+    }
+  ],
+  "photos": [
+    {
+      "file": "001_S01_chain_0000s_anchor.heic",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 10,
+      "captured_at": "2026-03-01T09:00:00",
+      "gps": {
+        "lat": 31.2304,
+        "lon": 121.4737
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "002_S01_chain_0030s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 11,
+      "captured_at": "2026-03-01T09:00:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "003_S01_chain_0060s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 12,
+      "captured_at": "2026-03-01T09:01:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "004_S01_chain_0090s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 16,
+      "captured_at": "2026-03-01T09:01:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "005_S01_chain_0120s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 17,
+      "captured_at": "2026-03-01T09:02:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "006_S01_chain_0150s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 18,
+      "captured_at": "2026-03-01T09:02:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "007_S01_chain_0180s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 10,
+      "captured_at": "2026-03-01T09:03:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "008_S01_chain_0210s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 11,
+      "captured_at": "2026-03-01T09:03:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "009_S01_chain_0240s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 12,
+      "captured_at": "2026-03-01T09:04:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "010_S01_chain_0270s_copy_previous.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 16,
+      "captured_at": "2026-03-01T09:04:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2304,
+            "lon": 121.4737
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "011_S01_chain_0300s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 17,
+      "captured_at": "2026-03-01T09:05:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2334,
+            "lon": 121.4797
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "012_S01_chain_0330s_interpolate.png",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 18,
+      "captured_at": "2026-03-01T09:05:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2337,
+            "lon": 121.4803
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "013_S01_chain_0360s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 10,
+      "captured_at": "2026-03-01T09:06:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.234,
+            "lon": 121.4809
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "014_S01_chain_0390s_interpolate.tif",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 11,
+      "captured_at": "2026-03-01T09:06:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2343,
+            "lon": 121.4815
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "015_S01_chain_0420s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 12,
+      "captured_at": "2026-03-01T09:07:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2346,
+            "lon": 121.4821
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "016_S01_chain_0450s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 16,
+      "captured_at": "2026-03-01T09:07:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2349,
+            "lon": 121.4827
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "017_S01_chain_0480s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 17,
+      "captured_at": "2026-03-01T09:08:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2352,
+            "lon": 121.4833
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "018_S01_chain_0510s_interpolate.heic",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 18,
+      "captured_at": "2026-03-01T09:08:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2355,
+            "lon": 121.4839
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "019_S01_chain_0540s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 10,
+      "captured_at": "2026-03-01T09:09:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2358,
+            "lon": 121.4845
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "020_S01_chain_0570s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 11,
+      "captured_at": "2026-03-01T09:09:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2361,
+            "lon": 121.4851
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "021_S01_chain_0600s_interpolate.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 12,
+      "captured_at": "2026-03-01T09:10:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2364,
+            "lon": 121.4857
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "022_S01_chain_0630s_copy_next.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 16,
+      "captured_at": "2026-03-01T09:10:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "023_S01_chain_0660s_copy_next.png",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 17,
+      "captured_at": "2026-03-01T09:11:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "024_S01_chain_0690s_copy_next.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 18,
+      "captured_at": "2026-03-01T09:11:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "025_S01_chain_0720s_copy_next.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 10,
+      "captured_at": "2026-03-01T09:12:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "026_S01_chain_0750s_copy_next.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 11,
+      "captured_at": "2026-03-01T09:12:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "027_S01_chain_0780s_copy_next.tif",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 12,
+      "captured_at": "2026-03-01T09:13:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "028_S01_chain_0810s_copy_next.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 16,
+      "captured_at": "2026-03-01T09:13:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "029_S01_chain_0840s_copy_next.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 17,
+      "captured_at": "2026-03-01T09:14:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "030_S01_chain_0870s_copy_next.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 18,
+      "captured_at": "2026-03-01T09:14:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2394,
+            "lon": 121.4917
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "031_S01_chain_0900s_anchor.jpg",
+      "case": "15-minute-chain",
+      "session": 1,
+      "source_id": 10,
+      "captured_at": "2026-03-01T09:15:00",
+      "gps": {
+        "lat": 31.2394,
+        "lon": 121.4917
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "032_S02_anchor_C.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 11,
+      "captured_at": "2026-03-01T11:00:00",
+      "gps": {
+        "lat": 35.68,
+        "lon": 139.76
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "033_S02_gap_59s_yellow.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 12,
+      "captured_at": "2026-03-01T11:00:59",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.68,
+            "lon": 139.76
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "034_S02_gap_exact_60s_red.png",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 16,
+      "captured_at": "2026-03-01T11:01:59",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "035_S02_gap_61s_red.heic",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 17,
+      "captured_at": "2026-03-01T11:03:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "036_S02_short_step_after_break_red.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 18,
+      "captured_at": "2026-03-01T11:03:29",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "037_S02_anchor_D.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 10,
+      "captured_at": "2026-03-01T11:06:40",
+      "gps": {
+        "lat": 35.681,
+        "lon": 139.761
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "038_S02_between_D_E_yellow.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 11,
+      "captured_at": "2026-03-01T11:07:10",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.682,
+            "lon": 139.763
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "039_S02_anchor_E_boundary.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 12,
+      "captured_at": "2026-03-01T11:07:40",
+      "gps": {
+        "lat": 35.683,
+        "lon": 139.765
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "040_S02_copy_E_not_D_yellow.tif",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 16,
+      "captured_at": "2026-03-01T11:08:10",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.683,
+            "lon": 139.765
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "041_S02_second_exact_60s_red.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 17,
+      "captured_at": "2026-03-01T11:09:10",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "042_S02_after_second_break_red.jpg",
+      "case": "strict-adjacent-gap-and-green-boundary",
+      "session": 2,
+      "source_id": 18,
+      "captured_at": "2026-03-01T11:09:39",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "043_S03_one_side_0000s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 10,
+      "captured_at": "2026-03-01T13:00:00",
+      "gps": {
+        "lat": 48.8566,
+        "lon": 2.3522
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "044_S03_one_side_0050s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 11,
+      "captured_at": "2026-03-01T13:00:50",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "045_S03_one_side_0100s.png",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 12,
+      "captured_at": "2026-03-01T13:01:40",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "046_S03_one_side_0150s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 16,
+      "captured_at": "2026-03-01T13:02:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "047_S03_one_side_0200s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 17,
+      "captured_at": "2026-03-01T13:03:20",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "048_S03_one_side_0250s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 18,
+      "captured_at": "2026-03-01T13:04:10",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "049_S03_one_side_0300s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 10,
+      "captured_at": "2026-03-01T13:05:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "050_S03_one_side_0350s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 11,
+      "captured_at": "2026-03-01T13:05:50",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "051_S03_one_side_0400s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 12,
+      "captured_at": "2026-03-01T13:06:40",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "052_S03_one_side_0450s.heic",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 16,
+      "captured_at": "2026-03-01T13:07:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "053_S03_one_side_0500s.tif",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 17,
+      "captured_at": "2026-03-01T13:08:20",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "054_S03_one_side_0550s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 18,
+      "captured_at": "2026-03-01T13:09:10",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "055_S03_one_side_0600s.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 10,
+      "captured_at": "2026-03-01T13:10:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8566,
+            "lon": 2.3522
+          },
+          "mode": "auto",
+          "method": "copy-previous"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "056_S03_one_side_0601s_red.png",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 11,
+      "captured_at": "2026-03-01T13:10:01",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "057_S03_one_side_0630s_red.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 12,
+      "captured_at": "2026-03-01T13:10:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "058_S03_one_side_0659s_red.jpg",
+      "case": "reference-window-600-601",
+      "session": 3,
+      "source_id": 16,
+      "captured_at": "2026-03-01T13:10:59",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "059_S04_session_boundary_anchor.jpg",
+      "case": "session-exact-one-hour",
+      "session": 4,
+      "source_id": 17,
+      "captured_at": "2026-03-01T15:00:00",
+      "gps": {
+        "lat": 48.8566,
+        "lon": 2.3522
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "060_S04_exactly_one_hour_same_session_red.jpg",
+      "case": "session-exact-one-hour",
+      "session": 4,
+      "source_id": 18,
+      "captured_at": "2026-03-01T16:00:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "061_S05_one_hour_plus_one_second_new_session_red.jpg",
+      "case": "session-over-one-hour",
+      "session": 5,
+      "source_id": 10,
+      "captured_at": "2026-03-01T17:00:01",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "062_S06_same_time_00_anchor_A.jpg",
+      "case": "conflicting-same-time",
+      "session": 6,
+      "source_id": 11,
+      "captured_at": "2026-03-02T10:00:00",
+      "gps": {
+        "lat": 40.0,
+        "lon": -74.0
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "063_S06_same_time_01_missing_red.jpg",
+      "case": "conflicting-same-time",
+      "session": 6,
+      "source_id": 12,
+      "captured_at": "2026-03-02T10:00:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "064_S06_same_time_02_anchor_B.jpg",
+      "case": "conflicting-same-time",
+      "session": 6,
+      "source_id": 16,
+      "captured_at": "2026-03-02T10:00:00",
+      "gps": {
+        "lat": 41.0,
+        "lon": -73.0
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "065_S07_dateline_anchor_east.jpg",
+      "case": "international-date-line",
+      "session": 7,
+      "source_id": 17,
+      "captured_at": "2026-03-02T11:30:00",
+      "gps": {
+        "lat": 35.0,
+        "lon": 179.9
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "066_S07_dateline_midpoint_yellow.tif",
+      "case": "international-date-line",
+      "session": 7,
+      "source_id": 18,
+      "captured_at": "2026-03-02T11:30:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.0,
+            "lon": -180.0
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "067_S07_dateline_anchor_west.png",
+      "case": "international-date-line",
+      "session": 7,
+      "source_id": 10,
+      "captured_at": "2026-03-02T11:31:00",
+      "gps": {
+        "lat": 35.0,
+        "lon": -179.9
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "068_S08_head_missing_00_yellow.jpg",
+      "case": "one-sided-future-and-provenance",
+      "session": 8,
+      "source_id": 11,
+      "captured_at": "2026-03-02T13:00:00",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.6812,
+            "lon": 139.7671
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "069_S08_head_missing_30_yellow.heic",
+      "case": "one-sided-future-and-provenance",
+      "session": 8,
+      "source_id": 12,
+      "captured_at": "2026-03-02T13:00:30",
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "yellow",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.6812,
+            "lon": 139.7671
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "070_S08_head_anchor_already_auto_green.jpg",
+      "case": "one-sided-future-and-provenance",
+      "session": 8,
+      "source_id": 16,
+      "captured_at": "2026-03-02T13:01:00",
+      "gps": {
+        "lat": 35.6812,
+        "lon": 139.7671
+      },
+      "provenance": {
+        "mode": "auto",
+        "method": "time-interpolation"
+      },
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "071_S09_unknown_time_no_gps_1_red.jpg",
+      "case": "unknown-capture-time",
+      "session": 9,
+      "source_id": 17,
+      "captured_at": null,
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "072_S09_unknown_time_no_gps_2_red.jpg",
+      "case": "unknown-capture-time",
+      "session": 9,
+      "source_id": 18,
+      "captured_at": null,
+      "gps": null,
+      "provenance": null,
+      "expected": {
+        "status": "red",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    },
+    {
+      "file": "073_S09_unknown_time_existing_gps_green.jpg",
+      "case": "unknown-capture-time",
+      "session": 9,
+      "source_id": 10,
+      "captured_at": null,
+      "gps": {
+        "lat": 51.5007,
+        "lon": -0.1246
+      },
+      "provenance": null,
+      "expected": {
+        "status": "green",
+        "candidate": null
+      },
+      "file_times": {
+        "atime_ns": 1577934245000000000,
+        "mtime_ns": 1577934245000000000,
+        "birthtime_ns": null,
+        "note": "Unix ctime is inode-change time, not creation time, and cannot be assigned through os.utime."
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+[package]
+name = "photopinfix"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "PhotoPinFix: review and repair photo GPS metadata in a terminal or desktop window"
+publish = false
+
+[dependencies]
+crossterm = "0.29"
+ratatui = "0.30.2"
+ratatui-image = { version = "11.1.0", default-features = false, features = ["crossterm"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+serde_json = "1"
+tempfile = "3"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "tiff", "webp", "gif", "bmp"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+libheif-rs = { version = "3.0", default-features = false, features = ["v1_17"] }
+exiftool-rs = { version = "=1.0.0", default-features = false }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }

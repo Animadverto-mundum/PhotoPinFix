@@ -1,0 +1,33 @@
+# Remove build-machine locations from the static codec installation. The
+# application disables codec plugins, so no plugin search directory is needed.
+if(NOT DEFINED NATIVE_PREFIX OR NOT IS_DIRECTORY "${NATIVE_PREFIX}")
+  message(FATAL_ERROR "NATIVE_PREFIX must name an existing native installation")
+endif()
+
+set(original_prefixes "${NATIVE_PREFIX}")
+file(GLOB pkgconfig_files "${NATIVE_PREFIX}/lib/pkgconfig/*.pc")
+foreach(config IN LISTS pkgconfig_files)
+  file(READ "${config}" contents)
+  string(REGEX MATCH "(^|\n)prefix=([^\r\n]*)" prefix_line "${contents}")
+  if(IS_ABSOLUTE "${CMAKE_MATCH_2}")
+    list(APPEND original_prefixes "${CMAKE_MATCH_2}")
+  endif()
+  string(REGEX REPLACE "(^|\n)prefix=[^\r\n]*" "\\1prefix=\${pcfiledir}/../.." contents "${contents}")
+  file(WRITE "${config}" "${contents}")
+endforeach()
+
+file(GLOB_RECURSE cmake_files "${NATIVE_PREFIX}/lib/cmake/*.cmake")
+foreach(config IN LISTS cmake_files)
+  file(READ "${config}" contents)
+  foreach(prefix IN LISTS original_prefixes)
+    string(REPLACE "${prefix}/" "\${_IMPORT_PREFIX}/" contents "${contents}")
+  endforeach()
+  file(WRITE "${config}" "${contents}")
+endforeach()
+
+set(version_header "${NATIVE_PREFIX}/include/libheif/heif_version.h")
+if(EXISTS "${version_header}")
+  file(READ "${version_header}" contents)
+  string(REGEX REPLACE "#define LIBHEIF_PLUGIN_DIRECTORY \"[^\"]*\"" "#define LIBHEIF_PLUGIN_DIRECTORY \"\"" contents "${contents}")
+  file(WRITE "${version_header}" "${contents}")
+endif()

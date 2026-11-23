@@ -1,0 +1,9 @@
+{
+  "id": 17,
+  "source_url": "https://picsum.photos/id/17/960/640",
+  "resolved_url": "https://fastly.picsum.photos/id/17/960/640.jpg?hmac=ZCgtMJdEA-iOs-_RVecRQRFglaQUj_7DMJOhBiYHeTg",
+  "info_url": "https://picsum.photos/id/17/info",
+  "local_file": "sources/picsum-17.jpg",
+  "sha256": "586a9cc03ce908868d693fe05f074f244c90ed3cd6adae06053268ac93e69562",
+  "note": "Public sample photograph; all fixture GPS and capture times are simulated and unrelated to its real subject."
+}

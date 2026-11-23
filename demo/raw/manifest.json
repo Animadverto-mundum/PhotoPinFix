@@ -1,0 +1,858 @@
+{
+  "signature": "PhotoPinFix genuine RAW simulated GPS fixtures v1",
+  "warning": "Real complete camera RAWs; fixture GPS and capture dates are simulated, unrelated to the actual scene. Original files remain in raw-sources.",
+  "repository_url": "https://raw.pixls.us/",
+  "license": "CC0-1.0",
+  "defaults": {
+    "adjacent_gap_seconds": 60,
+    "reference_window_seconds": 600,
+    "session_gap_seconds": 3600
+  },
+  "counts": {
+    "photos": 14,
+    "raw_formats": 9,
+    "makers": 8,
+    "green": 5,
+    "yellow": 9,
+    "red": 0,
+    "sessions": 3
+  },
+  "sources": [
+    {
+      "id": 1582,
+      "file": "sony_ilce7s.ARW",
+      "make": "Sony",
+      "model": "ILCE-7S",
+      "file_type": "ARW",
+      "camera_mode": "14bit 14bit compressed (3:2)",
+      "remark": "APS-C crop",
+      "catalog_date": "2017-07-13",
+      "source_url": "https://raw.pixls.us/getfile.php/1582/nice/Sony - ILCE-7S - 14bit 14bit compressed (3:2).ARW",
+      "sha256": "a35ebb2fbec929daa5beb20d1ce5c15a8aac7b1a7a231455387f3df8a7442e07",
+      "approx_mib": 5.88,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 6160384,
+      "local_file": "raw-sources/sony_ilce7s.ARW",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 734118,
+        "format": "JPEG",
+        "width": 1616,
+        "height": 1080
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/sony_ilce7s.ARW",
+        "FileType": "ARW",
+        "Make": "SONY",
+        "Model": "ILCE-7S",
+        "DateTimeOriginal": "2017:07:13 16:58:28",
+        "ImageWidth": 2816,
+        "ImageHeight": 1872
+      }
+    },
+    {
+      "id": 2102,
+      "file": "canon_40d.CR2",
+      "make": "Canon",
+      "model": "EOS 40D",
+      "file_type": "CR2",
+      "camera_mode": "sRAW2 (sRAW) (3:2)",
+      "remark": "",
+      "catalog_date": "2017-12-18",
+      "source_url": "https://raw.pixls.us/getfile.php/2102/nice/Canon - EOS 40D - sRAW2 (sRAW) (3:2).CR2",
+      "sha256": "ba644e7dd2abe74eca260e67f0206ff113bf0f62e710f8130611e964d6be5bf1",
+      "approx_mib": 5.54,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 5805950,
+      "local_file": "raw-sources/canon_40d.CR2",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 366439,
+        "format": "JPEG",
+        "width": 1936,
+        "height": 1288
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/canon_40d.CR2",
+        "FileType": "CR2",
+        "Make": "Canon",
+        "Model": "Canon EOS 40D",
+        "DateTimeOriginal": "2017:12:18 20:05:21",
+        "ImageWidth": 1936,
+        "ImageHeight": 1288
+      }
+    },
+    {
+      "id": 4659,
+      "file": "canon_r6.CR3",
+      "make": "Canon",
+      "model": "EOS R6",
+      "file_type": "CR3",
+      "camera_mode": "3:2",
+      "remark": "CRAW 1.6x crop",
+      "catalog_date": "2021-05-14",
+      "source_url": "https://raw.pixls.us/getfile.php/4659/nice/Canon - EOS R6 - 3:2.CR3",
+      "sha256": "74abb0a113d075ad9887a058082f40dd2a938c4813a08474d82356f11a027778",
+      "approx_mib": 5.03,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": "Johannes Kimmel",
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 5273174,
+      "local_file": "raw-sources/canon_r6.CR3",
+      "embedded_preview": {
+        "tag": "JpgFromRaw",
+        "bytes": 962675,
+        "format": "JPEG",
+        "width": 3408,
+        "height": 2272
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/canon_r6.CR3",
+        "FileType": "CR3",
+        "Make": "Canon",
+        "Model": "Canon EOS R6",
+        "Artist": "Johannes Kimmel",
+        "OwnerName": "",
+        "Copyright": "CCO",
+        "DateTimeOriginal": "2021:05:12 12:21:21",
+        "ImageWidth": 3408,
+        "ImageHeight": 2272
+      }
+    },
+    {
+      "id": 2988,
+      "file": "leica_m8.DNG",
+      "make": "Leica",
+      "model": "M8",
+      "file_type": "DNG",
+      "camera_mode": "8bit 8bit uncompressed (3:2)",
+      "remark": "",
+      "catalog_date": "2019-01-31",
+      "source_url": "https://raw.pixls.us/getfile.php/2988/nice/Leica - M8 - 8bit 8bit uncompressed (3:2).DNG",
+      "sha256": "7fdcca2371bb07fbf9483fcb08e3b5ab093eca1ca3924cbc86d6863736c31153",
+      "approx_mib": 10.09,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 10575296,
+      "local_file": "raw-sources/leica_m8.DNG",
+      "embedded_preview": {
+        "tag": "DNG-IFD0-RGB",
+        "bytes": 151763,
+        "format": "PNG",
+        "width": 320,
+        "height": 240
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/leica_m8.DNG",
+        "FileType": "DNG",
+        "Make": "Leica Camera AG",
+        "Model": "M8 Digital Camera",
+        "Artist": "",
+        "Copyright": "",
+        "DateTimeOriginal": "2018:07:08 10:30:28",
+        "ImageWidth": 3920,
+        "ImageHeight": 2638
+      }
+    },
+    {
+      "id": 1785,
+      "file": "nikon_d1x.NEF",
+      "make": "Nikon",
+      "model": "D1X",
+      "file_type": "NEF",
+      "camera_mode": "12bit 12bit compressed (3.0422960725076)",
+      "remark": "please upload the full set :)",
+      "catalog_date": "2017-10-08",
+      "source_url": "https://raw.pixls.us/getfile.php/1785/nice/Nikon - D1X - 12bit 12bit compressed (3.0422960725076).NEF",
+      "sha256": "ff80b83537a909e6adabeb091a12e4d5c83993e011672705366e7de39601695b",
+      "approx_mib": 3.71,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 3886374,
+      "local_file": "raw-sources/nikon_d1x.NEF",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 27540,
+        "format": "JPEG",
+        "width": 570,
+        "height": 375
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/nikon_d1x.NEF",
+        "FileType": "NEF",
+        "Make": "NIKON CORPORATION",
+        "Model": "NIKON D1X",
+        "Copyright": "Copyright,",
+        "DateTimeOriginal": "2004:07:30 12:23:24",
+        "ImageWidth": 4028,
+        "ImageHeight": 1324
+      }
+    },
+    {
+      "id": 2726,
+      "file": "fujifilm_s5000.RAF",
+      "make": "Fujifilm",
+      "model": "FinePix S5000",
+      "file_type": "RAF",
+      "camera_mode": "4:3",
+      "remark": "",
+      "catalog_date": "2018-08-20",
+      "source_url": "https://raw.pixls.us/getfile.php/2726/nice/Fujifilm - FinePix S5000 - 4:3.RAF",
+      "sha256": "dabd5e74521a6980156be9fd4b88d0c37b0fe4d0e0e6f5c12db8cffff1b76297",
+      "approx_mib": 6.53,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 6851240,
+      "local_file": "raw-sources/fujifilm_s5000.RAF",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 489938,
+        "format": "JPEG",
+        "width": 1280,
+        "height": 960
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/fujifilm_s5000.RAF",
+        "FileType": "RAF",
+        "Make": "FUJIFILM",
+        "Model": "FinePix S5000",
+        "Copyright": "",
+        "DateTimeOriginal": "2007:09:12 03:59:21",
+        "ImageWidth": 1280,
+        "ImageHeight": 960
+      }
+    },
+    {
+      "id": 7010,
+      "file": "panasonic_lx7.RW2",
+      "make": "Panasonic",
+      "model": "DMC-LX7",
+      "file_type": "RW2",
+      "camera_mode": "3:2",
+      "remark": "With \"intelligent zoom\" - https://github.com/darktable-org/darktable/issues/14082#issuecomment-1815266255",
+      "catalog_date": "2023-11-18",
+      "source_url": "https://raw.pixls.us/getfile.php/7010/nice/Panasonic - DMC-LX7 - 3:2.RW2",
+      "sha256": "18dfc3877e944020299635a8c2fad61fca2485b1c9b67645a495ee870a86e599",
+      "approx_mib": 3.24,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 3394560,
+      "local_file": "raw-sources/panasonic_lx7.RW2",
+      "embedded_preview": {
+        "tag": "JpgFromRaw",
+        "bytes": 607744,
+        "format": "JPEG",
+        "width": 1920,
+        "height": 1280
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/panasonic_lx7.RW2",
+        "FileType": "RW2",
+        "Make": "Panasonic",
+        "Model": "DMC-LX7",
+        "Artist": "",
+        "DateTimeOriginal": "2023:11:18 09:49:17",
+        "ImageWidth": 1888,
+        "ImageHeight": 1260
+      }
+    },
+    {
+      "id": 1803,
+      "file": "olympus_e3.ORF",
+      "make": "Olympus",
+      "model": "E-3",
+      "file_type": "ORF",
+      "camera_mode": "16bit (4:3)",
+      "remark": "",
+      "catalog_date": "2017-10-10",
+      "source_url": "https://raw.pixls.us/getfile.php/1803/nice/Olympus - E-3 - 16bit (4:3).ORF",
+      "sha256": "ba4605bbd9fe9b77971da444bcdb1698904c0ad4ebdf9dd42dd45ab255f3f6d4",
+      "approx_mib": 9.22,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 9664842,
+      "local_file": "raw-sources/olympus_e3.ORF",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 419789,
+        "format": "JPEG",
+        "width": 1600,
+        "height": 1200
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/olympus_e3.ORF",
+        "FileType": "ORF",
+        "Make": "OLYMPUS IMAGING CORP.",
+        "Model": "E-3",
+        "DateTimeOriginal": "2008:03:09 08:22:53",
+        "ImageWidth": 3720,
+        "ImageHeight": 2800
+      }
+    },
+    {
+      "id": 2239,
+      "file": "pentax_k10d.PEF",
+      "make": "Pentax",
+      "model": "K10D",
+      "file_type": "PEF",
+      "camera_mode": "12bit 12bit compressed (3:2)",
+      "remark": "please upload full set (DNG+PEF) :)",
+      "catalog_date": "2018-01-15",
+      "source_url": "https://raw.pixls.us/getfile.php/2239/nice/Pentax - K10D - 12bit 12bit compressed (3:2).PEF",
+      "sha256": "e35ae4154a468be3154f5f462e884ba5941f010d3e8f23d347fbec14809f44d3",
+      "approx_mib": 9.12,
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "author": null,
+      "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+      "bytes": 9561139,
+      "local_file": "raw-sources/pentax_k10d.PEF",
+      "embedded_preview": {
+        "tag": "JpgFromRaw",
+        "bytes": 1348879,
+        "format": "JPEG",
+        "width": 3872,
+        "height": 2592
+      },
+      "original_metadata": {
+        "SourceFile": "raw-sources/pentax_k10d.PEF",
+        "FileType": "PEF",
+        "Make": "PENTAX Corporation",
+        "Model": "PENTAX K10D",
+        "DateTimeOriginal": "2014:08:13 13:01:27",
+        "ImageWidth": 3936,
+        "ImageHeight": 2624
+      }
+    }
+  ],
+  "photos": [
+    {
+      "file": "s1_00_sony_anchor_start.jpg",
+      "make": "Sony",
+      "model": "ILCE-7S",
+      "file_type": "JPEG",
+      "session": 1,
+      "captured_at": "2026-03-03T09:00:00",
+      "gps": {
+        "lat": 31.2304,
+        "lon": 121.4737
+      },
+      "expected_coordinates": null,
+      "expected_method": null,
+      "case": "existing-gps",
+      "source_id": 1582,
+      "source_file": "sony_ilce7s.ARW",
+      "writable": true,
+      "expected": {
+        "status": "existing-gps",
+        "candidate": null
+      },
+      "sha256": "fec5cfdf9de00fbe7219d46940c7eab7b80c0120d47dfb44f94fac3376dcbc0d",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s1_01_sony_missing.ARW",
+      "make": "Sony",
+      "model": "ILCE-7S",
+      "file_type": "ARW",
+      "session": 1,
+      "captured_at": "2026-03-03T09:00:30",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 31.23265,
+        "lon": 121.4782
+      },
+      "expected_method": "time-interpolation",
+      "case": "raw-time-interpolation",
+      "source_id": 1582,
+      "source_file": "sony_ilce7s.ARW",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 734118,
+        "format": "JPEG",
+        "width": 1616,
+        "height": 1080
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.23265,
+            "lon": 121.4782
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "sha256": "b8ba9d6b192a90f0caf53cc2a52f90ca84b1b0a496207a645a8a3604112331ac",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s1_02_canon_missing.CR2",
+      "make": "Canon",
+      "model": "EOS 40D",
+      "file_type": "CR2",
+      "session": 1,
+      "captured_at": "2026-03-03T09:01:00",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 31.2349,
+        "lon": 121.4827
+      },
+      "expected_method": "time-interpolation",
+      "case": "raw-time-interpolation",
+      "source_id": 2102,
+      "source_file": "canon_40d.CR2",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 366439,
+        "format": "JPEG",
+        "width": 1936,
+        "height": 1288
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.2349,
+            "lon": 121.4827
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "sha256": "c1c30dd9b08d283cd35d14e4f0bdc8697de18361190fe090e731cd13b2498a62",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s1_03_canon_missing.CR3",
+      "make": "Canon",
+      "model": "EOS R6",
+      "file_type": "CR3",
+      "session": 1,
+      "captured_at": "2026-03-03T09:01:30",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 31.23715,
+        "lon": 121.4872
+      },
+      "expected_method": "time-interpolation",
+      "case": "raw-time-interpolation",
+      "source_id": 4659,
+      "source_file": "canon_r6.CR3",
+      "embedded_preview": {
+        "tag": "JpgFromRaw",
+        "bytes": 962675,
+        "format": "JPEG",
+        "width": 3408,
+        "height": 2272
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 31.23715,
+            "lon": 121.4872
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "sha256": "36d5bd5a3083022aa9be10b82ea3d05dffe7b52941a2bf7201c0227d8292f159",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s1_04_sony_anchor_end.jpg",
+      "make": "Sony",
+      "model": "ILCE-7S",
+      "file_type": "JPEG",
+      "session": 1,
+      "captured_at": "2026-03-03T09:02:00",
+      "gps": {
+        "lat": 31.2394,
+        "lon": 121.4917
+      },
+      "expected_coordinates": null,
+      "expected_method": null,
+      "case": "existing-gps",
+      "source_id": 1582,
+      "source_file": "sony_ilce7s.ARW",
+      "writable": true,
+      "expected": {
+        "status": "existing-gps",
+        "candidate": null
+      },
+      "sha256": "242fc4a6e919414cfc725ced381d3ca6a1a43e1817de5f56ae4793c652f53e30",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s2_00_leica_missing.DNG",
+      "make": "Leica",
+      "model": "M8",
+      "file_type": "DNG",
+      "session": 2,
+      "captured_at": "2026-03-03T11:00:00",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 35.6812,
+        "lon": 139.7671
+      },
+      "expected_method": "copy-next",
+      "case": "raw-copy-next",
+      "source_id": 2988,
+      "source_file": "leica_m8.DNG",
+      "embedded_preview": {
+        "tag": "DNG-IFD0-RGB",
+        "bytes": 151763,
+        "format": "PNG",
+        "width": 320,
+        "height": 240
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.6812,
+            "lon": 139.7671
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "sha256": "1d46d5d8a7a08a541536a73c855553f74aade11c20a2c6b66964219fad2098c6",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s2_01_nikon_missing.NEF",
+      "make": "Nikon",
+      "model": "D1X",
+      "file_type": "NEF",
+      "session": 2,
+      "captured_at": "2026-03-03T11:00:30",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 35.6812,
+        "lon": 139.7671
+      },
+      "expected_method": "copy-next",
+      "case": "raw-copy-next",
+      "source_id": 1785,
+      "source_file": "nikon_d1x.NEF",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 27540,
+        "format": "JPEG",
+        "width": 570,
+        "height": 375
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.6812,
+            "lon": 139.7671
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "sha256": "5a971a7f416ecfc29f81acf0ed273a140b96acf168d2ac1ba7f8c19ee9644c29",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s2_02_fujifilm_missing.RAF",
+      "make": "Fujifilm",
+      "model": "FinePix S5000",
+      "file_type": "RAF",
+      "session": 2,
+      "captured_at": "2026-03-03T11:01:00",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 35.6812,
+        "lon": 139.7671
+      },
+      "expected_method": "copy-next",
+      "case": "raw-copy-next",
+      "source_id": 2726,
+      "source_file": "fujifilm_s5000.RAF",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 492794,
+        "format": "JPEG",
+        "width": 1280,
+        "height": 960
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 35.6812,
+            "lon": 139.7671
+          },
+          "mode": "auto",
+          "method": "copy-next"
+        }
+      },
+      "sha256": "1fc9ce12c4ab6b220746ffbca4524635122babd3e5cf10ae9e0ec1eb9d1ae411",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s2_03_sony_anchor_end.jpg",
+      "make": "Sony",
+      "model": "ILCE-7S",
+      "file_type": "JPEG",
+      "session": 2,
+      "captured_at": "2026-03-03T11:01:30",
+      "gps": {
+        "lat": 35.6812,
+        "lon": 139.7671
+      },
+      "expected_coordinates": null,
+      "expected_method": null,
+      "case": "existing-gps",
+      "source_id": 1582,
+      "source_file": "sony_ilce7s.ARW",
+      "writable": true,
+      "expected": {
+        "status": "existing-gps",
+        "candidate": null
+      },
+      "sha256": "d9339a0b47a9ee3cd89d8f3c821c3954628d7f58337cc1c5089346236d0c4705",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s3_00_sony_anchor_start.jpg",
+      "make": "Sony",
+      "model": "ILCE-7S",
+      "file_type": "JPEG",
+      "session": 3,
+      "captured_at": "2026-03-03T13:00:00",
+      "gps": {
+        "lat": 48.8566,
+        "lon": 2.3522
+      },
+      "expected_coordinates": null,
+      "expected_method": null,
+      "case": "existing-gps",
+      "source_id": 1582,
+      "source_file": "sony_ilce7s.ARW",
+      "writable": true,
+      "expected": {
+        "status": "existing-gps",
+        "candidate": null
+      },
+      "sha256": "95cac48cdce732e5c1adfceebc4e2765412b81f7c2f6e129454b8f0df7e6c7bc",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s3_01_panasonic_missing.RW2",
+      "make": "Panasonic",
+      "model": "DMC-LX7",
+      "file_type": "RW2",
+      "session": 3,
+      "captured_at": "2026-03-03T13:00:30",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 48.8576,
+        "lon": 2.3542
+      },
+      "expected_method": "time-interpolation",
+      "case": "raw-time-interpolation",
+      "source_id": 7010,
+      "source_file": "panasonic_lx7.RW2",
+      "embedded_preview": {
+        "tag": "JpgFromRaw",
+        "bytes": 593326,
+        "format": "JPEG",
+        "width": 1920,
+        "height": 1280
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8576,
+            "lon": 2.3542
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "sha256": "071e54f33c68446d184909aa89700f3c4506e933cc1ab53d648662b857bd0d1e",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s3_02_olympus_missing.ORF",
+      "make": "Olympus",
+      "model": "E-3",
+      "file_type": "ORF",
+      "session": 3,
+      "captured_at": "2026-03-03T13:01:00",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 48.8586,
+        "lon": 2.3562
+      },
+      "expected_method": "time-interpolation",
+      "case": "raw-time-interpolation",
+      "source_id": 1803,
+      "source_file": "olympus_e3.ORF",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 419789,
+        "format": "JPEG",
+        "width": 1600,
+        "height": 1200
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8586,
+            "lon": 2.3562
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "sha256": "235b3fa5789a45d3b1cc01b30011bfd53684c188387964e6efacc94c6cd3c4c1",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s3_03_pentax_missing.PEF",
+      "make": "Pentax",
+      "model": "K10D",
+      "file_type": "PEF",
+      "session": 3,
+      "captured_at": "2026-03-03T13:01:30",
+      "gps": null,
+      "expected_coordinates": {
+        "lat": 48.8596,
+        "lon": 2.3582
+      },
+      "expected_method": "time-interpolation",
+      "case": "raw-time-interpolation",
+      "source_id": 2239,
+      "source_file": "pentax_k10d.PEF",
+      "embedded_preview": {
+        "tag": "JpgFromRaw",
+        "bytes": 1348879,
+        "format": "JPEG",
+        "width": 3872,
+        "height": 2592
+      },
+      "writable": true,
+      "expected": {
+        "status": "candidate",
+        "candidate": {
+          "coordinates": {
+            "lat": 48.8596,
+            "lon": 2.3582
+          },
+          "mode": "auto",
+          "method": "time-interpolation"
+        }
+      },
+      "sha256": "a418e886b729770a8f292e53ad5c2dc975dacae9c1215542121b481f1eca0624",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    },
+    {
+      "file": "s3_04_sony_existing_gps_anchor.ARW",
+      "make": "Sony",
+      "model": "ILCE-7S",
+      "file_type": "ARW",
+      "session": 3,
+      "captured_at": "2026-03-03T13:02:00",
+      "gps": {
+        "lat": 48.8606,
+        "lon": 2.3602
+      },
+      "expected_coordinates": null,
+      "expected_method": null,
+      "case": "existing-gps",
+      "source_id": 1582,
+      "source_file": "sony_ilce7s.ARW",
+      "embedded_preview": {
+        "tag": "PreviewImage",
+        "bytes": 734118,
+        "format": "JPEG",
+        "width": 1616,
+        "height": 1080
+      },
+      "writable": true,
+      "expected": {
+        "status": "existing-gps",
+        "candidate": null
+      },
+      "sha256": "f94bc7c636159c969513899a4cabbf0682064a38bb0e00dc26ae550da8abc771",
+      "file_times": {
+        "accessed_ns": 1577934245000000000,
+        "modified_ns": 1577934245000000000
+      }
+    }
+  ]
+}

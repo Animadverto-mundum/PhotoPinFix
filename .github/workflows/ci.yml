@@ -1,0 +1,175 @@
+name: Native builds and tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      fixtures:
+        description: Download and test real photos and camera RAW samples
+        type: boolean
+        default: true
+      artifacts:
+        description: Upload development binaries with source and relinking materials
+        type: boolean
+        default: true
+
+# Test artifacts only. No tag, GitHub Release, or repository write is performed.
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: '2'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  CARGO_PROFILE_RELEASE_STRIP: symbols
+  PCRE2_SYS_STATIC: '1'
+  PHOTOPINFIX_BUILD_JOBS: '4'
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            extension: ''
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            extension: .exe
+          # macos-15 is the standard Apple Silicon runner, not a larger runner.
+          - os: macos-15
+            target: aarch64-apple-darwin
+            extension: ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: ${{ matrix.target }}
+      - name: Verify native runner architecture
+        shell: bash
+        run: |
+          actual_host="$(rustc -vV | sed -n 's/^host: //p')"
+          test "$actual_host" = '${{ matrix.target }}'
+          if [[ '${{ runner.os }}' == 'macOS' ]]; then
+            test "$(uname -m)" = arm64
+          fi
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Install Linux desktop build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libgl1-mesa-dri libxtst6 xvfb
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+        with:
+          arch: x64
+      - uses: actions/cache@v6
+        with:
+          path: |
+            tools/native-heif
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: native-${{ matrix.os }}-${{ matrix.target }}-${{ hashFiles('scripts/build_native_heif.*', 'scripts/relocate_native_install.cmake', 'scripts/patches/**', 'Cargo.lock') }}
+      - name: Build static HEIC codecs on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ '${{ runner.os }}' == 'macOS' ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=11.0
+            printf 'MACOSX_DEPLOYMENT_TARGET=11.0\n' >> "$GITHUB_ENV"
+          fi
+          bash scripts/build_native_heif.sh
+          printf 'PKG_CONFIG_PATH=%s\nLIBHEIF_STATIC=1\nSYSTEM_DEPS_LINK=static\n' "$PWD/tools/native-heif/install/lib/pkgconfig" >> "$GITHUB_ENV"
+      - name: Build static HEIC codecs on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/build_native_heif.ps1
+          . ./tools/native-heif/env.ps1
+          "VCPKG_ROOT=$env:VCPKG_ROOT" >> $env:GITHUB_ENV
+          "VCPKGRS_TRIPLET=$env:VCPKGRS_TRIPLET" >> $env:GITHUB_ENV
+          "RUSTFLAGS=$env:RUSTFLAGS" >> $env:GITHUB_ENV
+      - name: Lint all targets
+        run: cargo clippy --locked --all-targets --target ${{ matrix.target }} -- -D warnings
+      - name: Native regression tests (includes HEIC with empty PATH)
+        run: cargo test --locked --target ${{ matrix.target }} -- --nocapture
+      - name: Build single executable
+        run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: CLI without interpreters or tools on PATH
+        shell: bash
+        run: |
+          PATH='' "target/${{ matrix.target }}/release/photopinfix${{ matrix.extension }}" --version
+          PATH='' "target/${{ matrix.target }}/release/photopinfix${{ matrix.extension }}" --help
+
+      # Python and Perl below are independent fixture/oracle tools used only
+      # for development tests, never copied into the application. Push and PR
+      # runs always include fixtures; dispatch may explicitly disable them.
+      - uses: actions/checkout@v7
+        if: github.event_name != 'workflow_dispatch' || inputs.fixtures
+        with:
+          repository: exiftool/exiftool
+          ref: '13.64'
+          path: tools/exiftool
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        if: github.event_name != 'workflow_dispatch' || inputs.fixtures
+        with:
+          python-version: '3.12'
+      - name: Install independent Perl oracle on Windows
+        if: runner.os == 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        shell: pwsh
+        run: |
+          choco install strawberryperl --yes --no-progress
+          'C:\Strawberry\perl\bin' >> $env:GITHUB_PATH
+      - name: Prepare real-camera test data
+        if: github.event_name != 'workflow_dispatch' || inputs.fixtures
+        run: |
+          python -m pip install Pillow pillow-heif
+          python scripts/create_demo.py
+          python scripts/create_raw_demo.py --reset
+      - name: Require image and RAW round trips
+        if: github.event_name != 'workflow_dispatch' || inputs.fixtures
+        env:
+          PHOTOPINFIX_REQUIRE_DEMO: '1'
+          PHOTOPINFIX_REQUIRE_RAW: '1'
+        run: cargo test --locked --target ${{ matrix.target }} --tests -- --nocapture
+      - name: Terminal keyboard workflows without runtime helpers
+        if: runner.os != 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        env:
+          PHOTOPINFIX_TEST_STANDALONE: '1'
+        run: |
+          python -m pip install pexpect pyte
+          python scripts/check_tui.py ./target/${{ matrix.target }}/release/photopinfix
+      - name: Native desktop window and confirmed writes without runtime helpers
+        if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: python scripts/check_gui.py ./target/${{ matrix.target }}/release/photopinfix
+      - name: Prepare development artifact and verify native dependencies
+        if: github.event_name != 'workflow_dispatch' || inputs.artifacts
+        shell: bash
+        run: bash scripts/package_release.sh '${{ matrix.target }}'
+      - uses: actions/upload-artifact@v7
+        if: github.event_name != 'workflow_dispatch' || inputs.artifacts
+        with:
+          name: photopinfix-${{ matrix.target }}-development
+          path: |
+            target/artifacts/*.tar.gz
+            target/artifacts/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

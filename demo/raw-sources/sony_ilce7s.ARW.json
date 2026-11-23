@@ -1,0 +1,35 @@
+{
+  "id": 1582,
+  "file": "sony_ilce7s.ARW",
+  "make": "Sony",
+  "model": "ILCE-7S",
+  "file_type": "ARW",
+  "camera_mode": "14bit 14bit compressed (3:2)",
+  "remark": "APS-C crop",
+  "catalog_date": "2017-07-13",
+  "source_url": "https://raw.pixls.us/getfile.php/1582/nice/Sony - ILCE-7S - 14bit 14bit compressed (3:2).ARW",
+  "sha256": "a35ebb2fbec929daa5beb20d1ce5c15a8aac7b1a7a231455387f3df8a7442e07",
+  "approx_mib": 5.88,
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "author": null,
+  "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+  "bytes": 6160384,
+  "local_file": "raw-sources/sony_ilce7s.ARW",
+  "embedded_preview": {
+    "tag": "PreviewImage",
+    "bytes": 734118,
+    "format": "JPEG",
+    "width": 1616,
+    "height": 1080
+  },
+  "original_metadata": {
+    "SourceFile": "raw-sources/sony_ilce7s.ARW",
+    "FileType": "ARW",
+    "Make": "SONY",
+    "Model": "ILCE-7S",
+    "DateTimeOriginal": "2017:07:13 16:58:28",
+    "ImageWidth": 2816,
+    "ImageHeight": 1872
+  }
+}

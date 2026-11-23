@@ -1,0 +1,35 @@
+{
+  "id": 2239,
+  "file": "pentax_k10d.PEF",
+  "make": "Pentax",
+  "model": "K10D",
+  "file_type": "PEF",
+  "camera_mode": "12bit 12bit compressed (3:2)",
+  "remark": "please upload full set (DNG+PEF) :)",
+  "catalog_date": "2018-01-15",
+  "source_url": "https://raw.pixls.us/getfile.php/2239/nice/Pentax - K10D - 12bit 12bit compressed (3:2).PEF",
+  "sha256": "e35ae4154a468be3154f5f462e884ba5941f010d3e8f23d347fbec14809f44d3",
+  "approx_mib": 9.12,
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "author": null,
+  "author_note": "The public repository catalog does not identify the photographer. Original Artist/OwnerName/Copyright tags are retained and recorded if available.",
+  "bytes": 9561139,
+  "local_file": "raw-sources/pentax_k10d.PEF",
+  "embedded_preview": {
+    "tag": "JpgFromRaw",
+    "bytes": 1348879,
+    "format": "JPEG",
+    "width": 3872,
+    "height": 2592
+  },
+  "original_metadata": {
+    "SourceFile": "raw-sources/pentax_k10d.PEF",
+    "FileType": "PEF",
+    "Make": "PENTAX Corporation",
+    "Model": "PENTAX K10D",
+    "DateTimeOriginal": "2014:08:13 13:01:27",
+    "ImageWidth": 3936,
+    "ImageHeight": 2624
+  }
+}
