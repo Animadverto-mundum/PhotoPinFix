@@ -65,6 +65,26 @@ def snapshot(path):
             "created_ns": birth, "inode": info.st_ino}
 
 
+def print_failure_logs(artifacts):
+    """Report bounded child-process diagnostics, without dumping environment."""
+    for name in ("gui-stderr.log", "gui-xvfb.log"):
+        path = artifacts / name
+        try:
+            with path.open("rb") as log:
+                log.seek(0, os.SEEK_END)
+                length = log.tell()
+                log.seek(max(0, length - 8192))
+                text = log.read(8192).decode("utf-8", errors="replace")
+            lines = text.splitlines()
+            truncated = length > 8192 or len(lines) > 60
+            tail = "\n".join(lines[-60:]).strip() or "(empty)"
+            label = f"--- {name}: last 8 KiB / 60 lines"
+            print(label + (" (truncated)" if truncated else "") + " ---", file=sys.stderr)
+            print(tail, file=sys.stderr, flush=True)
+        except OSError as error:
+            print(f"--- {name}: unable to read diagnostic log: {error} ---", file=sys.stderr, flush=True)
+
+
 class Oracle:
     def __init__(self):
         perl = shutil.which("perl")
@@ -446,6 +466,14 @@ def run(args):
                     png(artifacts / "gui-failure.png", *x.frame())
                 except Exception:
                     pass
+            try:
+                for log in logs:
+                    log.flush()
+                print_failure_logs(artifacts)
+            except Exception:
+                # Reporting must not replace the original test failure, even
+                # when its output stream is closed or a log is inaccessible.
+                pass
             raise
         finally:
             if application and application.poll() is None:

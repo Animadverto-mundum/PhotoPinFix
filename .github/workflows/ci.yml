@@ -78,7 +78,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libgl1-mesa-dri libxtst6 xvfb
+          # winit loads libxkbcommon-x11 at runtime; libxkbcommon-dev does not provide it.
+          sudo apt-get install -y pkg-config libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libgl1-mesa-dri libxtst6 xvfb
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
         with:
@@ -166,10 +167,19 @@ jobs:
           python -m pip install pexpect pyte
           python scripts/check_tui.py ./target/${{ matrix.target }}/release/photopinfix
       - name: Native desktop window and confirmed writes without runtime helpers
+        id: gui
         if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
         run: python scripts/check_gui.py ./target/${{ matrix.target }}/release/photopinfix
+      - name: Retain desktop failure diagnostics
+        if: failure() && steps.gui.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: photopinfix-${{ matrix.target }}-gui-diagnostics
+          path: target/test-artifacts/gui-*
+          if-no-files-found: warn
+          retention-days: 7
       - name: Prepare development artifact and verify native dependencies
         if: github.event_name != 'workflow_dispatch' || inputs.artifacts
         shell: bash
