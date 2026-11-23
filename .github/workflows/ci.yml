@@ -58,6 +58,12 @@ jobs:
         with:
           components: rustfmt, clippy
           targets: ${{ matrix.target }}
+      # setup-python replaces PKG_CONFIG_PATH on Unix. Initialize Python before
+      # adding our static HEIC prefix so later Cargo tests retain both paths.
+      - uses: actions/setup-python@v7
+        if: github.event_name != 'workflow_dispatch' || inputs.fixtures
+        with:
+          python-version: '3.12'
       - name: Verify native runner architecture
         shell: bash
         run: |
@@ -93,7 +99,8 @@ jobs:
             printf 'MACOSX_DEPLOYMENT_TARGET=11.0\n' >> "$GITHUB_ENV"
           fi
           bash scripts/build_native_heif.sh
-          printf 'PKG_CONFIG_PATH=%s\nLIBHEIF_STATIC=1\nSYSTEM_DEPS_LINK=static\n' "$PWD/tools/native-heif/install/lib/pkgconfig" >> "$GITHUB_ENV"
+          source tools/native-heif/env.sh
+          printf 'PKG_CONFIG_PATH=%s\nLIBHEIF_STATIC=1\nSYSTEM_DEPS_LINK=static\n' "$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
       - name: Build static HEIC codecs on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -125,10 +132,6 @@ jobs:
           ref: '13.64'
           path: tools/exiftool
           persist-credentials: false
-      - uses: actions/setup-python@v7
-        if: github.event_name != 'workflow_dispatch' || inputs.fixtures
-        with:
-          python-version: '3.12'
       - name: Install independent Perl oracle on Windows
         if: runner.os == 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
         shell: pwsh
@@ -141,6 +144,14 @@ jobs:
           python -m pip install Pillow pillow-heif
           python scripts/create_demo.py
           python scripts/create_raw_demo.py --reset
+      - name: Verify static HEIC discovery after fixture environment setup
+        if: runner.os != 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        shell: bash
+        run: |
+          test -f tools/native-heif/install/lib/pkgconfig/libheif.pc
+          pkg-config --atleast-version=1.17 libheif
+          pkg-config --modversion libheif libde265
+          pkg-config --libs --static libheif
       - name: Require image and RAW round trips
         if: github.event_name != 'workflow_dispatch' || inputs.fixtures
         env:
