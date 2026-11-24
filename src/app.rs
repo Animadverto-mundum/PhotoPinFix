@@ -16,7 +16,9 @@ use photopinfix::{
     coordinates::{CoordinateFormat, CoordinateNotation, format_coordinate, parse_coordinate},
     map::{self, MapPoint, MapScale, MapView},
     metadata::MetadataTool,
-    model::{Candidate, Coordinates, Method, Mode, Photo, Provenance, Session, Settings},
+    model::{
+        Candidate, Coordinates, Method, Mode, Photo, PhotoStats, Provenance, Session, Settings,
+    },
     strategy,
 };
 use ratatui::{
@@ -98,6 +100,8 @@ pub struct App {
     pub map_image: Option<Protocol>,
     pub map_status: String,
     pub map_scale: Option<MapScale>,
+    pub map_loading: bool,
+    pub map_tick: usize,
     pub attribution: String,
     pub map_view: MapView,
     pub background: bool,
@@ -117,6 +121,9 @@ pub struct App {
     photo_dirty: bool,
     map_dirty: bool,
     map_cancel: Arc<AtomicBool>,
+    map_background: Option<image::DynamicImage>,
+    map_background_key: Option<u64>,
+    map_scope: u64,
 }
 
 struct TerminalModes {
@@ -186,6 +193,8 @@ pub fn run(
         map_image: None,
         map_status: String::new(),
         map_scale: None,
+        map_loading: false,
+        map_tick: 0,
         attribution: String::new(),
         map_view: MapView::fit(&[]),
         background: false,
@@ -205,10 +214,17 @@ pub fn run(
         photo_dirty: true,
         map_dirty: true,
         map_cancel: Arc::new(AtomicBool::new(false)),
+        map_background: None,
+        map_background_key: None,
+        map_scope: 0,
     };
     app.start_scan();
     while !app.quit {
         app.receive();
+        if app.map_loading {
+            app.map_tick = app.map_tick.wrapping_add(1);
+            app.dirty = true;
+        }
         if app.dirty {
             if app.clear {
                 terminal.clear()?;
@@ -274,6 +290,28 @@ impl App {
             None => (0..self.photos.len()).collect(),
         }
     }
+    pub fn stats(&self) -> PhotoStats {
+        PhotoStats::from_photos(
+            self.visible_indices()
+                .iter()
+                .map(|index| &self.photos[*index]),
+        )
+    }
+
+    fn move_missing(&mut self, delta: isize) {
+        if let Some(row) = missing_row(&self.photos, &self.rows, self.table.selected(), delta) {
+            self.table.select(Some(row));
+            self.selection_changed();
+        } else {
+            self.status = if delta < 0 {
+                "当前范围前方没有缺少 GPS 的照片"
+            } else {
+                "当前范围后方没有缺少 GPS 的照片"
+            }
+            .into();
+            self.dirty = true;
+        }
+    }
     pub fn points(&self) -> Vec<MapPoint> {
         let selected = self.selected_index();
         self.visible_indices()
@@ -328,8 +366,7 @@ impl App {
         }
         if Size::new(self.map_area.width, self.map_area.height) != Size::new(map.width, map.height)
         {
-            self.map_generation += 1;
-            self.map_cancel.store(true, Ordering::Relaxed);
+            self.invalidate_map_background();
             self.map_dirty = true;
             self.map_image = None;
             self.map_scale = None;
@@ -361,6 +398,8 @@ impl App {
         self.fit_map();
     }
     fn fit_map(&mut self) {
+        self.map_scope = self.map_scope.wrapping_add(1);
+        self.invalidate_map_background();
         self.map_view = MapView::fit(&self.points());
         self.map_dirty = true;
         self.dirty = true;
@@ -402,8 +441,8 @@ impl App {
         self.photo_image = None;
         self.map_image = None;
         self.photo_generation += 1;
-        self.map_generation += 1;
-        self.map_cancel.store(true, Ordering::Relaxed);
+        self.invalidate_map_background();
+        self.map_dirty = true;
         self.status = format!("正在扫描 {}…", self.directory.display());
         self.dirty = true;
         self.workers.scan(
@@ -451,19 +490,12 @@ impl App {
                         self.photo_status = error;
                     }
                 },
-                Response::Map(id, result, status, attribution, scale)
-                    if id == self.map_generation =>
-                {
-                    match result {
-                        Ok(image) => self.map_image = Some(image),
-                        Err(error) => {
-                            self.map_image = None;
-                            self.status = error;
-                        }
-                    }
-                    self.map_status = status;
-                    self.attribution = attribution;
-                    self.map_scale = scale;
+                Response::Map(id, result) if id == self.map_generation => {
+                    self.map_background = Some(result.image);
+                    self.map_status = result.status;
+                    self.attribution = result.attribution;
+                    self.map_loading = false;
+                    self.map_dirty = true;
                 }
                 Response::Written(generation, index, candidate, result)
                     if generation == self.directory_generation =>
@@ -516,22 +548,67 @@ impl App {
                 self.workers.request_photo(request);
             }
         }
-        if self.map_dirty && self.map_area.width > 0 && self.map_area.height > 0 {
-            self.map_dirty = false;
-            self.map_generation += 1;
-            self.map_cancel.store(true, Ordering::Relaxed);
-            self.map_cancel = Arc::new(AtomicBool::new(false));
-            let request = MapRequest {
-                id: self.map_generation,
-                points: self.points(),
-                view: self.map_view.clone(),
-                size: Size::new(self.map_area.width, self.map_area.height),
-                background: self.background,
-                source: self.source,
-                cancel: self.map_cancel.clone(),
-            };
-            self.workers.request_map(request);
+    }
+
+    fn invalidate_map_background(&mut self) {
+        self.map_generation = self.map_generation.wrapping_add(1);
+        self.map_cancel.store(true, Ordering::Relaxed);
+        self.map_background = None;
+        self.map_background_key = None;
+        self.map_loading = false;
+        self.attribution.clear();
+    }
+
+    /// Called after layout, before drawing: show current dots immediately even
+    /// if a different session's tiles are still downloading on the worker.
+    pub fn refresh_map(&mut self) {
+        if self.loading
+            || self.modal.is_some()
+            || self.map_area.width == 0
+            || self.map_area.height == 0
+        {
+            return;
         }
+        let points = self.points();
+        let size = Size::new(self.map_area.width, self.map_area.height);
+        let dimensions = self.workers.map_dimensions(size);
+        let key = (self.background && !points.is_empty())
+            .then(|| map::background_key(&self.map_view, dimensions, self.source, self.map_scope));
+        if key != self.map_background_key {
+            self.invalidate_map_background();
+            self.map_background_key = key;
+            self.map_dirty = true;
+            if key.is_some() {
+                self.map_cancel = Arc::new(AtomicBool::new(false));
+                self.map_loading = true;
+                self.map_status = "正在加载底图…".into();
+                self.workers.request_map(MapRequest {
+                    id: self.map_generation,
+                    view: self.map_view.clone(),
+                    size,
+                    source: self.source,
+                    cancel: self.map_cancel.clone(),
+                });
+            }
+        }
+        if !self.map_dirty {
+            return;
+        }
+        self.map_dirty = false;
+        if key.is_none() {
+            self.map_status = "无底图".into();
+        }
+        let (image, scale) =
+            self.workers
+                .compose_map(self.map_background.as_ref(), &points, &self.map_view, size);
+        match image {
+            Ok(image) => self.map_image = Some(image),
+            Err(error) => {
+                self.map_image = None;
+                self.map_status = error;
+            }
+        }
+        self.map_scale = scale;
     }
     fn switch_session(&mut self, delta: isize) {
         if self.sessions.is_empty() {
@@ -667,6 +744,8 @@ impl App {
             KeyCode::Char('q') | KeyCode::Esc => self.request_action(PendingAction::Quit),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
+            KeyCode::Char('[') => self.move_missing(-1),
+            KeyCode::Char(']') => self.move_missing(1),
             KeyCode::PageDown => self.move_selection(10),
             KeyCode::PageUp => self.move_selection(-10),
             KeyCode::Home => {
@@ -992,9 +1071,93 @@ fn reformat_inputs(
     Ok(converted)
 }
 
+fn missing_row(
+    photos: &[Photo],
+    rows: &[BrowserRow],
+    current: Option<usize>,
+    delta: isize,
+) -> Option<usize> {
+    if delta == 0 {
+        return None;
+    }
+    let eligible = |(position, row): &(usize, &BrowserRow)| {
+        matches!(row, BrowserRow::Photo(index) if photos[*index].status().is_missing())
+            && current.is_none_or(|current| {
+                if delta < 0 {
+                    *position < current
+                } else {
+                    *position > current
+                }
+            })
+    };
+    if delta < 0 {
+        rows.iter()
+            .enumerate()
+            .rev()
+            .find(eligible)
+            .map(|(position, _)| position)
+    } else {
+        rows.iter()
+            .enumerate()
+            .find(eligible)
+            .map(|(position, _)| position)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_rows_skip_directories_and_persisted_gps_without_wrapping() {
+        let coordinates = Coordinates::new(1.0, 2.0).unwrap();
+        let candidate = Candidate {
+            coordinates,
+            provenance: Provenance {
+                mode: Mode::Auto,
+                method: Method::CopyPrevious,
+            },
+        };
+        let photo = Photo {
+            path: "photo.jpg".into(),
+            captured_at: None,
+            capture_time_info: Default::default(),
+            gps: None,
+            provenance: None,
+            candidate: None,
+            error: None,
+        };
+        let mut photos = vec![photo; 5];
+        photos[0].gps = Some(coordinates);
+        photos[1].candidate = Some(candidate);
+        photos[3].candidate = Some(Candidate {
+            provenance: Provenance {
+                mode: Mode::Manual,
+                method: Method::CoordinateInput,
+            },
+            ..candidate
+        });
+        photos[4].gps = Some(coordinates);
+        photos[4].provenance = Some(candidate.provenance);
+        let rows = [
+            BrowserRow::Parent("/".into()),
+            BrowserRow::Directory("sub".into()),
+            BrowserRow::Photo(0),
+            BrowserRow::Photo(1),
+            BrowserRow::Photo(2),
+            BrowserRow::Photo(3),
+            BrowserRow::Photo(4),
+        ];
+        assert_eq!(missing_row(&photos, &rows, Some(1), 1), Some(3));
+        assert_eq!(missing_row(&photos, &rows, Some(3), 1), Some(4));
+        assert_eq!(missing_row(&photos, &rows, Some(4), 1), Some(5));
+        assert_eq!(missing_row(&photos, &rows, Some(5), 1), None);
+        assert_eq!(missing_row(&photos, &rows, Some(3), -1), None);
+        assert_eq!(missing_row(&photos, &rows, Some(6), -1), Some(5));
+        assert_eq!(missing_row(&photos, &rows[..3], None, 1), None);
+        assert_eq!(missing_row(&photos, &rows, None, 1), Some(3));
+        assert_eq!(missing_row(&photos, &rows, None, -1), Some(5));
+    }
 
     #[test]
     fn settings_reject_values_that_cannot_be_used_for_time_differences() {

@@ -85,6 +85,10 @@ class Tui:
         compact = "".join(text.split())
         return self.until(lambda screen: compact in "".join(screen.split()), text, seconds)
 
+    def expect_stats(self, native, auto, unassigned, manual, written):
+        for label, count in [("原有GPS", native), ("自动待写", auto), ("待指定", unassigned), ("手动待写", manual), ("已写入", written)]:
+            self.expect(f"{label} {count}")
+
     @staticmethod
     def modal_visible(screen, title):
         # pyte can lose the left corner when it overwrites a CJK continuation
@@ -171,7 +175,7 @@ def main():
         tui = Tui(directory, "tui-flow")
         tui.expect("找到 73 张照片")
         tui.expect("Session 1/9")
-        tui.expect("绿2 黄29 红0")
+        tui.expect_stats(2, 29, 0, 0, 0)
         tui.expect("31 个位置")
         tui.until(lambda s: "正在读取图片" not in s, "first HEIC preview")
         tui.expect("采用前图")
@@ -181,8 +185,12 @@ def main():
         tui.key("?")
         tui.expect_modal("快捷键")
         tui.key("\x1b")
-        tui.expect_modal_closed("快捷键", "绿2 黄29 红0")
-        tui.key("j")
+        tui.expect_modal_closed("快捷键", "自动待写 29")
+        tui.key("]")
+        tui.expect_selected(files[1].name)
+        tui.key("]")
+        tui.expect_selected(files[2].name)
+        tui.key("[")
         tui.expect_selected(files[1].name)
         for key, method in [("p", "copy-previous"), ("n", "copy-next"), ("c", "copy-nearest"), ("i", "time-interpolation")]:
             tui.key(key)
@@ -198,6 +206,11 @@ def main():
         tui.expect("70°15′00.000″W")
         tui.key("\r")
         tui.expect_modal_closed("编辑 GPS · 坐标输入", "手动坐标已暂存")
+        tui.expect_stats(2, 28, 0, 1, 0)
+        tui.key("]")
+        tui.expect_selected(files[2].name)
+        tui.key("[")
+        tui.expect_selected(files[1].name)
         tui.key("s")
         tui.expect_modal("Settings · 本次运行")
         tui.snapshot("settings")
@@ -219,29 +232,29 @@ def main():
         tui.expect_modal("确认写入")
         tui.expect("[取消]")
         tui.key("\x1b")
-        tui.expect_modal_closed("确认写入", "MAN *")
+        tui.expect_modal_closed("确认写入", "手动待写 *")
         assert not list(directory.glob("*.photopinfix-original")), "cancel wrote metadata"
         tui.key("\r")
         tui.expect_modal("确认写入")
         tui.key("y")
         tui.expect_modal_closed("确认写入", "成功 1/1")
-        tui.expect("绿3 黄28 红0")
+        tui.expect_stats(2, 28, 0, 0, 1)
         tui.key("W")
         tui.expect_modal("确认写入")
         tui.key("\r")  # default is cancel
-        tui.expect_modal_closed("确认写入", "绿3 黄28 红0")
+        tui.expect_modal_closed("确认写入", "已写入 1")
         assert len(list(directory.glob("*.photopinfix-original"))) == 1
         tui.key("W")
         tui.expect_modal("确认写入")
         tui.key("y")
         tui.expect_modal_closed("确认写入", "成功 28/28", seconds=120)
-        tui.expect("绿31 黄0 红0")
+        tui.expect_stats(2, 0, 0, 0, 29)
         tui.key("\x1b[C")
         tui.expect("Session 2/9")
-        tui.expect("绿3 黄3 红5")
+        tui.expect_stats(3, 3, 5, 0, 0)
         tui.key("a")
         tui.expect("全部照片")
-        tui.expect("绿42 黄18 红13")
+        tui.expect_stats(12, 18, 13, 0, 30)
         tui.key("W")
         tui.expect_modal("确认写入")
         tui.child.setwinsize(24, 80)

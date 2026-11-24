@@ -1,7 +1,8 @@
 //! Map images are assembled in memory; this module never writes a cache or image file.
 //! Only tiles intersecting the current viewport are requested, serially.
 use std::{
-    collections::HashMap,
+    collections::{HashMap, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
     io::{Cursor, Read},
     sync::{
         Arc,
@@ -34,6 +35,93 @@ pub struct MapPoint {
     pub coordinates: Coordinates,
     pub selected: bool,
     pub existing: bool,
+}
+
+/// Background identity deliberately excludes markers. Selection, GPS edits and
+/// write completion must not restart a slow tile request for the same view.
+pub fn background_key(view: &MapView, size: [u32; 2], source: usize, scope: u64) -> u64 {
+    let mut state = DefaultHasher::new();
+    for value in [
+        view.center_x,
+        view.center_y,
+        view.span_x,
+        view.span_y,
+        view.zoom,
+    ] {
+        value.to_bits().hash(&mut state);
+    }
+    size.hash(&mut state);
+    source.hash(&mut state);
+    scope.hash(&mut state);
+    state.finish()
+}
+
+/// Pure, synchronous compositing: a cached background never contains markers.
+/// Calling with new points immediately replaces old-session/old-selection dots.
+pub fn compose_points(
+    background: Option<&DynamicImage>,
+    points: &[MapPoint],
+    view: &MapView,
+    size: [u32; 2],
+    radii: (u32, u32, u32),
+) -> DynamicImage {
+    let width = size[0].clamp(1, 2048);
+    let height = size[1].clamp(1, 1536);
+    let mut image = background
+        .filter(|image| image.width() == width && image.height() == height)
+        .map_or_else(
+            || RgbaImage::from_pixel(width, height, BACKGROUND),
+            DynamicImage::to_rgba8,
+        );
+    let normal = radii.0.clamp(1, 32);
+    let selected = radii.1.clamp(1, 64).max(normal);
+    let outline = radii.2.min(8);
+    paint_points(
+        &mut image,
+        points,
+        view,
+        (normal as i32, selected as i32, outline as i32),
+    );
+    DynamicImage::ImageRgba8(image)
+}
+
+fn paint_points(
+    image: &mut RgbaImage,
+    points: &[MapPoint],
+    view: &MapView,
+    radii: (i32, i32, i32),
+) {
+    let (width, height) = image.dimensions();
+    for selected in [false, true] {
+        for point in points.iter().filter(|point| point.selected == selected) {
+            if !point.coordinates.lat.is_finite() || !point.coordinates.lon.is_finite() {
+                continue;
+            }
+            let (x, y) = view.pixel_position(point.coordinates, width, height);
+            if x < -12.0 || y < -12.0 || x > width as f64 + 12.0 || y > height as f64 + 12.0 {
+                continue;
+            }
+            let color = if point.existing {
+                Rgba([76, 220, 128, 255])
+            } else {
+                Rgba([255, 209, 76, 255])
+            };
+            let (normal, selected_radius, outline) = radii;
+            let radius = if selected { selected_radius } else { normal };
+            circle(
+                image,
+                x.round() as i32,
+                y.round() as i32,
+                radius + outline,
+                if selected {
+                    Rgba([247, 250, 255, 255])
+                } else {
+                    Rgba([5, 10, 17, 255])
+                },
+            );
+            circle(image, x.round() as i32, y.round() as i32, radius, color);
+        }
+    }
 }
 
 /// A horizontal metric ruler at the map's center latitude. `cells` is the
@@ -439,10 +527,40 @@ impl MapRenderer {
     ) -> MapResult {
         let width = width.clamp(1, 2048);
         let height = height.clamp(1, 1536);
+        let mut result = if background && !points.is_empty() {
+            self.render_background_cancellable(view, width, height, source_index, cancel)
+        } else {
+            MapResult {
+                image: DynamicImage::ImageRgba8(RgbaImage::from_pixel(width, height, BACKGROUND)),
+                status: "无底图".into(),
+                attribution: String::new(),
+            }
+        };
+        if let Some(image) = result.image.as_mut_rgba8() {
+            paint_points(image, points, view, self.marker_radii);
+        }
+        result
+            .status
+            .push_str(&format!(" · {} 个位置", points.len()));
+        result
+    }
+
+    /// Fetch and assemble only the background. UI layers composite their current
+    /// points separately, even while this blocking, cancellable request runs.
+    pub fn render_background_cancellable(
+        &mut self,
+        view: &MapView,
+        width: u32,
+        height: u32,
+        source_index: usize,
+        cancel: &AtomicBool,
+    ) -> MapResult {
+        let width = width.clamp(1, 2048);
+        let height = height.clamp(1, 1536);
         let mut image = RgbaImage::from_pixel(width, height, BACKGROUND);
         let mut attribution = String::new();
-        let mut status = format!("无底图 · {} 个位置", points.len());
-        if background && !points.is_empty() && !cancel.load(Ordering::Relaxed) {
+        let mut status = "底图暂不可用，保留位置点".to_owned();
+        if !cancel.load(Ordering::Relaxed) {
             let mut failures = Vec::new();
             let start = if source_index == 0 {
                 self.last_good_source.unwrap_or(0)
@@ -471,12 +589,7 @@ impl MapRenderer {
                         } else {
                             ""
                         };
-                        status = format!(
-                            "{} · {} 个位置{}",
-                            self.sources[index].name,
-                            points.len(),
-                            fallback
-                        );
+                        status = format!("{}{}", self.sources[index].name, fallback);
                         break;
                     }
                     Err(error) => {
@@ -496,47 +609,6 @@ impl MapRenderer {
                         .first()
                         .map(|error| format!(" · {error}"))
                         .unwrap_or_default()
-                );
-            }
-        }
-        // Render the selected photo last so coincident points never obscure it.
-        for selected in [false, true] {
-            for point in points.iter().filter(|point| point.selected == selected) {
-                if !point.coordinates.lat.is_finite() || !point.coordinates.lon.is_finite() {
-                    continue;
-                }
-                let (x, y) = view.pixel_position(point.coordinates, width, height);
-                if x < -12.0 || y < -12.0 || x > width as f64 + 12.0 || y > height as f64 + 12.0 {
-                    continue;
-                }
-                let color = if point.existing {
-                    Rgba([76, 220, 128, 255])
-                } else {
-                    Rgba([255, 209, 76, 255])
-                };
-                let (normal_radius, selected_radius, outline) = self.marker_radii;
-                let radius = if selected {
-                    selected_radius
-                } else {
-                    normal_radius
-                };
-                circle(
-                    &mut image,
-                    x.round() as i32,
-                    y.round() as i32,
-                    radius + outline,
-                    if selected {
-                        Rgba([247, 250, 255, 255])
-                    } else {
-                        Rgba([5, 10, 17, 255])
-                    },
-                );
-                circle(
-                    &mut image,
-                    x.round() as i32,
-                    y.round() as i32,
-                    radius,
-                    color,
                 );
             }
         }
@@ -832,6 +904,55 @@ mod tests {
             selected,
             existing,
         }
+    }
+
+    #[test]
+    fn current_markers_replace_old_points_without_mutating_cached_background() {
+        let previous = point(30.0, 120.0, true, true);
+        let current = point(30.02, 120.02, true, false);
+        let view = MapView::fit(&[previous, current]);
+        let size = [240, 160];
+        let background = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
+            size[0],
+            size[1],
+            Rgba([41, 52, 63, 255]),
+        ));
+        let original = background.clone();
+        let before = compose_points(Some(&background), &[previous], &view, size, (3, 7, 2));
+        let after = compose_points(Some(&background), &[current], &view, size, (3, 7, 2));
+        let old_pixel = view.pixel_position(previous.coordinates, size[0], size[1]);
+        let new_pixel = view.pixel_position(current.coordinates, size[0], size[1]);
+        let (old_x, old_y) = (old_pixel.0.round() as u32, old_pixel.1.round() as u32);
+        let (new_x, new_y) = (new_pixel.0.round() as u32, new_pixel.1.round() as u32);
+        assert_eq!(
+            before.to_rgba8().get_pixel(old_x, old_y).0,
+            [76, 220, 128, 255]
+        );
+        assert_eq!(
+            after.to_rgba8().get_pixel(old_x, old_y).0,
+            [41, 52, 63, 255]
+        );
+        assert_eq!(
+            after.to_rgba8().get_pixel(new_x, new_y).0,
+            [255, 209, 76, 255]
+        );
+        assert_eq!(background, original);
+        let awaiting_tiles = compose_points(None, &[current], &view, size, (3, 7, 2));
+        assert_eq!(
+            awaiting_tiles.to_rgba8().get_pixel(new_x, new_y).0,
+            [255, 209, 76, 255]
+        );
+    }
+
+    #[test]
+    fn background_identity_tracks_view_source_size_and_session() {
+        let mut view = MapView::fit(&[point(30.0, 120.0, false, true)]);
+        let key = background_key(&view, [600, 400], 0, 1);
+        assert_ne!(key, background_key(&view, [600, 400], 0, 2));
+        assert_ne!(key, background_key(&view, [600, 400], 1, 1));
+        assert_ne!(key, background_key(&view, [601, 400], 0, 1));
+        view.zoom_by(0.5);
+        assert_ne!(key, background_key(&view, [600, 400], 0, 1));
     }
 
     #[test]

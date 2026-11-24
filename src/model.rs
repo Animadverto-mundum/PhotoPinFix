@@ -138,6 +138,87 @@ pub struct Photo {
     pub error: Option<String>,
 }
 
+/// Mutually exclusive workflow states. Persisted GPS always wins over a draft.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PhotoStatus {
+    NativeGps,
+    Written,
+    AutoPending,
+    Unassigned,
+    ManualPending,
+}
+
+impl PhotoStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::NativeGps => "原有GPS",
+            Self::Written => "已写入",
+            Self::AutoPending => "自动待写",
+            Self::Unassigned => "待指定",
+            Self::ManualPending => "手动待写",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::NativeGps => "文件已有 GPS，且没有 PhotoPinFix 来源标记；不会补写",
+            Self::Written => "文件已有 GPS，并带有 PhotoPinFix 来源标记；已成功写入",
+            Self::AutoPending => "文件缺少 GPS，已有自动建议坐标，尚未写入",
+            Self::Unassigned => "文件缺少 GPS，尚无可写入的坐标，需要手动指定",
+            Self::ManualPending => "文件缺少 GPS，已手动指定坐标或参考方式，尚未写入",
+        }
+    }
+
+    pub fn is_missing(self) -> bool {
+        matches!(
+            self,
+            Self::AutoPending | Self::Unassigned | Self::ManualPending
+        )
+    }
+}
+
+/// Counts for one displayed scope. Previously patched files remain part of the
+/// originally-missing total when their PhotoPinFix provenance is read again.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PhotoStats {
+    pub total: usize,
+    pub native_gps: usize,
+    pub written: usize,
+    pub auto_pending: usize,
+    pub unassigned: usize,
+    pub manual_pending: usize,
+}
+
+impl PhotoStats {
+    pub fn from_photos<'a>(photos: impl IntoIterator<Item = &'a Photo>) -> Self {
+        let mut stats = Self::default();
+        for photo in photos {
+            stats.total += 1;
+            match photo.status() {
+                PhotoStatus::NativeGps => stats.native_gps += 1,
+                PhotoStatus::Written => stats.written += 1,
+                PhotoStatus::AutoPending => stats.auto_pending += 1,
+                PhotoStatus::Unassigned => stats.unassigned += 1,
+                PhotoStatus::ManualPending => stats.manual_pending += 1,
+            }
+        }
+        stats
+    }
+
+    pub fn missing_total(self) -> usize {
+        self.written + self.auto_pending + self.unassigned + self.manual_pending
+    }
+
+    /// Coordinates assigned, including those already persisted successfully.
+    pub fn assigned(self) -> usize {
+        self.pending_write() + self.written
+    }
+
+    pub fn pending_write(self) -> usize {
+        self.auto_pending + self.manual_pending
+    }
+}
+
 /// Metadata needed to display the camera's timestamp without inventing a zone
 /// or losing trailing zeroes / precision beyond Chrono's nanosecond storage.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -147,6 +228,22 @@ pub struct CaptureTimeInfo {
 }
 
 impl Photo {
+    pub fn status(&self) -> PhotoStatus {
+        if self.gps.is_some() {
+            if self.provenance.is_some() {
+                PhotoStatus::Written
+            } else {
+                PhotoStatus::NativeGps
+            }
+        } else {
+            match self.candidate.map(|candidate| candidate.provenance.mode) {
+                Some(Mode::Auto) => PhotoStatus::AutoPending,
+                Some(Mode::Manual) => PhotoStatus::ManualPending,
+                None => PhotoStatus::Unassigned,
+            }
+        }
+    }
+
     pub fn effective_coordinates(&self) -> Option<Coordinates> {
         self.gps.or_else(|| self.candidate.map(|c| c.coordinates))
     }
@@ -207,4 +304,92 @@ pub struct Session {
     pub indices: Vec<usize>,
     pub start: Option<NaiveDateTime>,
     pub end: Option<NaiveDateTime>,
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+
+    fn photo() -> Photo {
+        Photo {
+            path: "photo.jpg".into(),
+            captured_at: None,
+            capture_time_info: Default::default(),
+            gps: None,
+            provenance: None,
+            candidate: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn five_states_count_once_and_persisted_gps_takes_precedence() {
+        let coordinates = Coordinates::new(1.0, 2.0).unwrap();
+        let auto = Provenance {
+            mode: Mode::Auto,
+            method: Method::CopyPrevious,
+        };
+        let manual = Provenance {
+            mode: Mode::Manual,
+            method: Method::CoordinateInput,
+        };
+        let mut photos = vec![photo(); 5];
+        photos[0].gps = Some(coordinates);
+        // Defensive: an obsolete draft must never turn an existing GPS into a gap.
+        photos[0].candidate = Some(Candidate {
+            coordinates,
+            provenance: auto,
+        });
+        photos[1].gps = Some(coordinates);
+        photos[1].provenance = Some(auto);
+        photos[2].candidate = Some(Candidate {
+            coordinates,
+            provenance: auto,
+        });
+        photos[3].candidate = Some(Candidate {
+            coordinates,
+            provenance: manual,
+        });
+        photos[3].error = Some("write failed".into());
+        photos[4].provenance = Some(manual); // A source tag alone is not written GPS.
+        assert_eq!(
+            photos.iter().map(Photo::status).collect::<Vec<_>>(),
+            vec![
+                PhotoStatus::NativeGps,
+                PhotoStatus::Written,
+                PhotoStatus::AutoPending,
+                PhotoStatus::ManualPending,
+                PhotoStatus::Unassigned,
+            ]
+        );
+        let before = PhotoStats::from_photos(&photos);
+        assert_eq!(
+            before,
+            PhotoStats {
+                total: 5,
+                native_gps: 1,
+                written: 1,
+                auto_pending: 1,
+                unassigned: 1,
+                manual_pending: 1
+            }
+        );
+        assert_eq!(
+            (
+                before.missing_total(),
+                before.assigned(),
+                before.pending_write()
+            ),
+            (4, 3, 2)
+        );
+        photos[3].gps = Some(coordinates);
+        photos[3].provenance = Some(manual);
+        photos[3].candidate = None;
+        let after = PhotoStats::from_photos(&photos);
+        assert_eq!(after.written, 2);
+        assert_eq!(after.manual_pending, 0);
+        assert_eq!(after.missing_total(), before.missing_total());
+        assert_eq!(after.assigned(), before.assigned());
+        assert!(!photos[3].status().is_missing());
+    }
 }

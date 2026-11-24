@@ -5,6 +5,7 @@ mod gui_directory;
 mod gui_launch;
 mod gui_map;
 mod gui_state;
+mod gui_theme;
 mod input;
 mod ui;
 mod workers;

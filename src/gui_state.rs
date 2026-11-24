@@ -5,7 +5,9 @@ use photopinfix::{
     coordinates::CoordinateFormat,
     map::MapPoint,
     metadata::{MetadataTool, ScanResult},
-    model::{Candidate, Coordinates, Method, Mode, Photo, Provenance, Session, Settings},
+    model::{
+        Candidate, Coordinates, Method, Mode, Photo, PhotoStats, Provenance, Session, Settings,
+    },
     preview, strategy,
 };
 use std::{
@@ -124,6 +126,71 @@ impl GuiState {
 
     pub fn selected_photo(&self) -> Option<&Photo> {
         self.selected.and_then(|index| self.photos.get(index))
+    }
+
+    pub fn stats(&self) -> PhotoStats {
+        PhotoStats::from_photos(
+            self.visible_indices()
+                .iter()
+                .map(|index| &self.photos[*index]),
+        )
+    }
+
+    /// Nearest still-unwritten GPS gap in this scope. Does not wrap at an edge;
+    /// with no selection, forward starts at the first gap and backward at last.
+    pub fn missing_neighbor(&self, delta: isize) -> Option<usize> {
+        if delta == 0 {
+            return None;
+        }
+        let visible = self.visible_indices();
+        let current = self
+            .selected
+            .and_then(|index| visible.iter().position(|item| *item == index));
+        let eligible = |(position, index): &(usize, &usize)| {
+            self.photos[**index].status().is_missing()
+                && current.is_none_or(|current| {
+                    if delta < 0 {
+                        *position < current
+                    } else {
+                        *position > current
+                    }
+                })
+        };
+        if delta < 0 {
+            visible
+                .iter()
+                .enumerate()
+                .rev()
+                .find(eligible)
+                .map(|(_, index)| *index)
+        } else {
+            visible
+                .iter()
+                .enumerate()
+                .find(eligible)
+                .map(|(_, index)| *index)
+        }
+    }
+
+    pub fn previous_missing(&mut self) -> bool {
+        self.navigate_missing(-1)
+    }
+
+    pub fn next_missing(&mut self) -> bool {
+        self.navigate_missing(1)
+    }
+
+    fn navigate_missing(&mut self, delta: isize) -> bool {
+        if let Some(index) = self.missing_neighbor(delta) {
+            return self.select(index);
+        }
+        self.status = if delta < 0 {
+            "当前范围前方没有缺少 GPS 的照片"
+        } else {
+            "当前范围后方没有缺少 GPS 的照片"
+        }
+        .into();
+        false
     }
 
     pub fn map_points(&self) -> Vec<MapPoint> {
@@ -784,6 +851,118 @@ mod tests {
             }),
         ));
         state
+    }
+
+    #[test]
+    fn scoped_stats_follow_manual_override_failures_and_successful_writes() {
+        let mut state = loaded();
+        assert_eq!(
+            state.stats(),
+            PhotoStats {
+                total: 2,
+                native_gps: 1,
+                auto_pending: 1,
+                ..Default::default()
+            }
+        );
+        state.select(1);
+        state
+            .stage_coordinates(Coordinates::new(12.0, 34.0).unwrap())
+            .unwrap();
+        assert_eq!(
+            (state.stats().auto_pending, state.stats().manual_pending),
+            (0, 1)
+        );
+        let item = WriteItem {
+            index: 1,
+            path: state.photos[1].path.clone(),
+            candidate: state.photos[1].candidate.unwrap(),
+        };
+        let before = state.stats();
+        assert!(!state.accept(Response::Written(99, item.clone(), Ok(()))));
+        assert_eq!(state.stats(), before);
+        state.accept(Response::Written(
+            0,
+            item.clone(),
+            Err("write failed".into()),
+        ));
+        assert_eq!(state.stats(), before);
+        assert!(state.photos[1].gps.is_none());
+        state.accept(Response::Written(0, item, Ok(())));
+        let after = state.stats();
+        assert_eq!(
+            (after.written, after.manual_pending, after.pending_write()),
+            (1, 0, 0)
+        );
+        assert_eq!(
+            (after.missing_total(), after.assigned()),
+            (before.missing_total(), before.assigned())
+        );
+        assert_eq!(state.missing_neighbor(1), None);
+        state.toggle_all();
+        assert_eq!(
+            (
+                state.stats().total,
+                state.stats().native_gps,
+                state.stats().written,
+                state.stats().auto_pending
+            ),
+            (4, 2, 1, 1)
+        );
+    }
+
+    #[test]
+    fn missing_navigation_includes_all_drafts_stops_at_edges_and_stays_in_scope() {
+        let mut state = state();
+        state.photos = vec![
+            photo(0, true),
+            photo(30, false),
+            photo(90, false),
+            photo(120, false),
+            photo(150, true),
+            photo(4000, false),
+        ];
+        let candidate = Candidate {
+            coordinates: Coordinates::new(10.0, 20.0).unwrap(),
+            provenance: Provenance {
+                mode: Mode::Auto,
+                method: Method::CopyPrevious,
+            },
+        };
+        state.photos[1].candidate = Some(candidate);
+        state.photos[3].candidate = Some(Candidate {
+            provenance: Provenance {
+                mode: Mode::Manual,
+                method: Method::CoordinateInput,
+            },
+            ..candidate
+        });
+        state.photos[4].provenance = Some(candidate.provenance);
+        state.sessions = strategy::build_sessions(&state.photos);
+        state.selected = Some(0);
+        assert_eq!(state.missing_neighbor(-1), None);
+        for index in [1, 2, 3] {
+            assert!(state.next_missing());
+            assert_eq!(state.selected, Some(index));
+        }
+        assert!(!state.next_missing());
+        assert_eq!(state.selected, Some(3));
+        assert!(state.previous_missing());
+        assert_eq!(state.selected, Some(2));
+        assert_eq!(state.stats().missing_total(), 4);
+        state.toggle_all();
+        state.select(3);
+        assert_eq!(state.missing_neighbor(1), Some(5));
+        assert!(state.next_missing());
+        assert_eq!(state.selected, Some(5));
+        state.switch_session(1);
+        assert_eq!(state.visible_indices(), vec![5]);
+        assert!(!state.previous_missing());
+        assert!(!state.next_missing());
+        assert_eq!(state.stats().unassigned, 1);
+        state.selected = None;
+        assert_eq!(state.missing_neighbor(1), Some(5));
+        assert_eq!(state.missing_neighbor(-1), Some(5));
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::{
 use photopinfix::{
     coordinates::{CoordinateFormat, CoordinateNotation, format_coordinate, parse_coordinate},
     map,
-    model::{Mode, Photo},
+    model::{Mode, Photo, PhotoStats, PhotoStatus},
 };
 use ratatui::{
     Frame,
@@ -68,10 +68,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     };
     let map_block = Block::bordered().title(format!(" 地图 · {mode} "));
     let map_inner = map_block.inner(map_area);
-    let footer_height = if app.attribution.is_empty() { 3 } else { 5 };
+    // Reserve attribution space before tiles arrive. Its appearance must not
+    // resize the viewport and trigger an endless background reload cycle.
+    let footer_height = if app.background { 5 } else { 3 };
     let [map_image, map_info] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(footer_height)]).areas(map_inner);
     app.update_areas(photo_inner, map_image, files);
+    app.refresh_map();
     draw_files(frame, app, files);
     draw_details(frame, app, details);
     frame.render_widget(photo_block, photo);
@@ -116,7 +119,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         info.push(Line::from("比例尺计算中…").style(Style::default().fg(MUTED)));
     }
     info.push(Line::from(format!("{count} 个位置 · {selected}")));
-    info.push(Line::from(app.map_status.as_str()).style(Style::default().fg(MUTED)));
+    let map_status = if app.map_loading {
+        const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        format!("{} 正在加载底图…", SPINNER[app.map_tick % SPINNER.len()])
+    } else {
+        app.map_status.clone()
+    };
+    info.push(Line::from(map_status).style(Style::default().fg(MUTED)));
     if !app.attribution.is_empty() {
         info.push(Line::from(app.attribution.as_str()));
     }
@@ -125,7 +134,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Paragraph::new(vec![
             Line::from(app.status.as_str()).style(Style::default().fg(ACCENT)),
             Line::from(
-                "↑↓文件  ←→拍摄  a全部  e编辑  Enter写当前  W写全部  s设置  m底图  ?帮助  q退出",
+                "↑↓文件 []缺失 ←→拍摄 a全部 e编辑 Enter写当前 W全写 s设置 m地图 ?帮助 q退出",
             )
             .style(Style::default().fg(MUTED)),
         ]),
@@ -151,17 +160,13 @@ fn coordinate_pair(photo: &Photo, format: CoordinateFormat) -> Option<(String, S
 }
 
 fn photo_lines(photo: &Photo, format: CoordinateFormat, width: u16) -> (Vec<Line<'static>>, Color) {
-    let (status, color) = if photo.gps.is_some() {
-        ("GPS", Color::Green)
-    } else if photo
-        .candidate
-        .is_some_and(|c| c.provenance.mode == Mode::Manual)
-    {
-        ("MAN *", Color::Yellow)
-    } else if photo.candidate.is_some() {
-        ("AUTO *", Color::Yellow)
+    let state = photo.status();
+    let color = status_color(state);
+    let status = state.label();
+    let unsaved = if matches!(state, PhotoStatus::AutoPending | PhotoStatus::ManualPending) {
+        " *"
     } else {
-        ("缺失", Color::Red)
+        ""
     };
     let method = photo
         .candidate
@@ -180,7 +185,10 @@ fn photo_lines(photo: &Photo, format: CoordinateFormat, width: u16) -> (Vec<Line
         .to_string_lossy()
         .into_owned();
     let mut lines = vec![Line::from(vec![
-        Span::styled(format!("{status} · {method}  "), Style::default().bold()),
+        Span::styled(
+            format!("{status}{unsaved} · {method}  "),
+            Style::default().bold(),
+        ),
         Span::raw(name),
     ])];
     // Table cells do not wrap automatically. Keep the timezone and fractional
@@ -214,17 +222,68 @@ fn photo_lines(photo: &Photo, format: CoordinateFormat, width: u16) -> (Vec<Line
     (lines, color)
 }
 
+fn status_color(status: PhotoStatus) -> Color {
+    match status {
+        PhotoStatus::NativeGps => Color::Green,
+        PhotoStatus::Written => Color::Cyan,
+        PhotoStatus::AutoPending => Color::Yellow,
+        PhotoStatus::Unassigned => Color::Red,
+        PhotoStatus::ManualPending => Color::Magenta,
+    }
+}
+
+fn stats_lines(stats: PhotoStats, width: u16) -> Vec<Line<'static>> {
+    let groups = [
+        vec![
+            format!("原本缺失 {}", stats.missing_total()),
+            format!("已指定 {}", stats.assigned()),
+            format!("待指定 {}", stats.unassigned),
+            format!("已指定未写 {}", stats.pending_write()),
+            format!("已写出 {}", stats.written),
+        ],
+        vec![
+            format!("原有GPS {}", stats.native_gps),
+            format!("自动待写 {}", stats.auto_pending),
+            format!("待指定 {}", stats.unassigned),
+            format!("手动待写 {}", stats.manual_pending),
+            format!("已写入 {}", stats.written),
+        ],
+    ];
+    let mut lines = Vec::new();
+    for group in groups {
+        let mut line = String::new();
+        for metric in group {
+            let joined = if line.is_empty() {
+                metric.clone()
+            } else {
+                format!("{line} · {metric}")
+            };
+            if !line.is_empty() && Line::from(joined.clone()).width() > usize::from(width) {
+                lines.push(Line::from(std::mem::take(&mut line)));
+            }
+            if !line.is_empty() {
+                line.push_str(" · ");
+            }
+            line.push_str(&metric);
+        }
+        lines.push(Line::from(line));
+    }
+    lines
+}
+
 fn draw_files(frame: &mut Frame, app: &mut App, area: Rect) {
-    let visible = app.visible_indices();
-    let green = visible
-        .iter()
-        .filter(|i| app.photos[**i].gps.is_some())
-        .count();
-    let yellow = visible
-        .iter()
-        .filter(|i| app.photos[**i].gps.is_none() && app.photos[**i].candidate.is_some())
-        .count();
-    let red = visible.len() - green - yellow;
+    let stats = app.stats();
+    let block = Block::bordered().title(" 文件 ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    let summary = stats_lines(stats, inner.width);
+    let summary_height = (summary.len() as u16).min(inner.height.saturating_sub(3));
+    let [progress, listing] =
+        Layout::vertical([Constraint::Length(summary_height), Constraint::Min(0)]).areas(inner);
+    frame.render_widget(
+        Paragraph::new(summary).style(Style::default().fg(MUTED)),
+        progress,
+    );
     let rows = app
         .rows
         .iter()
@@ -252,21 +311,14 @@ fn draw_files(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect::<Vec<_>>();
     let table = Table::new(rows, [Constraint::Percentage(100)])
-        .block(Block::bordered().title(format!(" 文件 · 绿{green} 黄{yellow} 红{red} ")))
         .row_highlight_style(Style::default().bg(Color::Rgb(32, 48, 65)))
         .highlight_symbol("› ");
-    frame.render_stateful_widget(table, area, &mut app.table);
+    frame.render_stateful_widget(table, listing, &mut app.table);
 }
 
 fn draw_details(frame: &mut Frame, app: &App, area: Rect) {
     let lines = if let Some(photo) = app.selected_photo() {
-        let source = if photo.gps.is_some() {
-            "已有 GPS"
-        } else if photo.candidate.is_some() {
-            "待写入 *"
-        } else {
-            "缺少 GPS"
-        };
+        let source = photo.status().label();
         let gps = coordinate_pair(photo, app.coordinate_format)
             .map(|(lat, lon)| format!("{lat}  {lon}"))
             .unwrap_or_else(|| "无坐标；e 输入，p/n/c/i 选择参考".into());
@@ -288,7 +340,7 @@ fn draw_details(frame: &mut Frame, app: &App, area: Rect) {
             })
             .unwrap_or_else(|| "来源未标注".into());
         vec![
-            Line::from(source).bold(),
+            Line::from(source).style(Style::default().fg(status_color(photo.status())).bold()),
             Line::from(gps),
             Line::from(provenance),
             Line::from(
@@ -351,10 +403,11 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
             "快捷键",
             vec![
                 Line::from("↑↓ / j k：移动光标；PageUp/Down：翻页；Home/End：首末行"),
+                Line::from("[ / ]：当前范围上一张 / 下一张缺少 GPS 的照片，含自动与手动待写"),
                 Line::from("← / →：上一次 / 下一次拍摄；a：当前拍摄 / 所有照片"),
                 Line::from("Enter：确认写当前照片；Shift+Enter / W：确认写当前范围全部候选"),
                 Line::from("e：手动编辑 GPS；F2 小数/度分秒，F3 正负号/NSEW"),
-                Line::from("p：采用前一张绿图；n：后一张；c：时间最近；i：按时间插值"),
+                Line::from("p：采用前一张已有GPS图；n：后一张；c：时间最近；i：按时间插值"),
                 Line::from("手动快捷键不受 1 分钟 / 10 分钟阈值限制；u：恢复自动建议"),
                 Line::from("s：设置自动补全阈值与经纬度显示格式，仅本次运行有效"),
                 Line::from("m：无底图 / 图片地图；b：切换地图源；+/-：缩放；f：全部点入镜"),
@@ -371,7 +424,8 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
                         "未启用，写全部请用 W"
                     }
                 )),
-                Line::from("绿：文件已有 GPS；黄：可写候选；红：需要手动定位。* 表示未保存。"),
+                Line::from("绿：原有GPS；黄：自动待写；红：待指定；紫：手动待写；青：已写入。"),
+                Line::from("原本缺失包含已写入；已指定含自动/手动待写与已写入。* 表示未保存。"),
                 Line::from("照片与地图预览不生成临时图片；地图缓存仅保留在内存。"),
                 Line::from("任意键关闭").style(Style::default().fg(ACCENT)),
             ],
@@ -809,7 +863,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join("\n");
             assert_eq!(color, Color::Yellow);
-            assert!(text.contains("AUTO * · 时间插值"));
+            assert!(text.contains("自动待写 * · 时间插值"));
             assert!(text.contains("2026-03-01 09:02:03.050 +08:00"), "{text}");
             assert!(text.contains("纬 ") && text.contains("经 "));
             assert!(if format == CoordinateFormat::Decimal {
@@ -829,6 +883,67 @@ mod tests {
                 .join(" "),
             "2026-03-01 09:02:03.050 +08:00"
         );
+    }
+
+    #[test]
+    fn five_status_labels_colors_and_scope_counts_remain_distinct() {
+        let mut photo = sample_photo();
+        let auto = photo.candidate.unwrap();
+        for (state, color) in [
+            (PhotoStatus::NativeGps, Color::Green),
+            (PhotoStatus::Written, Color::Cyan),
+            (PhotoStatus::AutoPending, Color::Yellow),
+            (PhotoStatus::Unassigned, Color::Red),
+            (PhotoStatus::ManualPending, Color::Magenta),
+        ] {
+            photo.gps = matches!(state, PhotoStatus::NativeGps | PhotoStatus::Written)
+                .then_some(auto.coordinates);
+            photo.provenance = (state == PhotoStatus::Written).then_some(auto.provenance);
+            photo.candidate = match state {
+                PhotoStatus::AutoPending => Some(auto),
+                PhotoStatus::ManualPending => Some(photopinfix::model::Candidate {
+                    provenance: photopinfix::model::Provenance {
+                        mode: Mode::Manual,
+                        ..auto.provenance
+                    },
+                    ..auto
+                }),
+                _ => None,
+            };
+            let (lines, actual_color) = photo_lines(&photo, CoordinateFormat::Decimal, 68);
+            assert_eq!(actual_color, color);
+            assert!(lines[0].to_string().contains(state.label()));
+        }
+        let stats = PhotoStats {
+            total: 5,
+            native_gps: 1,
+            written: 1,
+            auto_pending: 1,
+            unassigned: 1,
+            manual_pending: 1,
+        };
+        for width in [36, 69] {
+            let lines = stats_lines(stats, width);
+            assert!(lines.iter().all(|line| line.width() <= usize::from(width)));
+            let text = lines
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ");
+            for expected in [
+                "原本缺失 4",
+                "已指定 3",
+                "待指定 1",
+                "已指定未写 2",
+                "已写出 1",
+                "原有GPS 1",
+                "自动待写 1",
+                "手动待写 1",
+                "已写入 1",
+            ] {
+                assert!(text.contains(expected), "missing {expected}: {text}");
+            }
+        }
     }
 
     #[test]

@@ -52,8 +52,8 @@ def preserved_read(path, operation):
 def snapshot(path):
     info = path.stat()
     birth = getattr(info, "st_birthtime_ns", None)
-    libc = C.CDLL(None, use_errno=True)
-    if birth is None and hasattr(libc, "statx"):
+    libc = C.CDLL(None, use_errno=True) if sys.platform == "linux" and birth is None else None
+    if libc is not None and hasattr(libc, "statx"):
         statx = libc.statx
         statx.argtypes = [C.c_int, C.c_char_p, C.c_int, C.c_uint, C.c_void_p]
         statx.restype = C.c_int
@@ -424,7 +424,12 @@ def run(args):
             x.wait(x.find_window, "native PhotoPinFix window appears")
             x.settled(artifacts / "gui-01-initial.png")
             print(f"Native GUI rendered with an empty PATH: {artifacts / 'gui-01-initial.png'}", flush=True)
-            x.key("Down")
+            # Skip original GPS and visit both pending automatic photos.
+            x.key("bracketright")
+            x.settled()
+            x.key("bracketright")
+            x.settled()
+            x.key("bracketleft")
             if screenshots:
                 # A quiet loading placeholder is also a stable frame. For the
                 # documentation landscape, require actual photographic detail
@@ -453,6 +458,12 @@ def run(args):
             x.settled(artifacts / "gui-04-editor-hemisphere.png")
             x.key("Return")
             x.settled()
+            # A manual assignment stays in missing-photo navigation until it
+            # is written. The independent oracle later verifies this photo.
+            x.key("bracketright")
+            x.settled()
+            x.key("bracketleft")
+            x.settled(artifacts / "gui-04b-manual-pending.png")
             x.key("Return")
             x.settled(artifacts / "gui-05-confirm-current.png")
             # Enter must cancel the default-focused confirmation, never write.
@@ -491,9 +502,17 @@ def run(args):
             # Compact-layout tabs must be reachable by mouse as well as the
             # keyboard workflows tested above. These points are client pixels
             # in the fixed 880x640, 1x-DPI test viewport.
-            x.click(425, 188)
+            x.click(425, 285)
             x.settled(artifacts / "gui-12b-minimum-map.png")
-            x.click(336, 188)
+            def compact_canvas(color):
+                width, height, pixels = x.frame()
+                return sum(pixels[(y * width + column) * 3:(y * width + column) * 3 + 3] == color
+                           for y in range(330, min(height - 110, 520), 2)
+                           for column in range(300, min(width - 35, 840), 2))
+            assert compact_canvas(bytes((241, 246, 242))) > 2000, "Mouse did not open the compact map tab"
+            x.click(520, 285)
+            x.settled(artifacts / "gui-12c-minimum-location.png")
+            x.click(336, 285)
             x.settled()
             # The fifth photo still has no GPS. Check the entire coordinate
             # form at the minimum window size without writing or staging it.

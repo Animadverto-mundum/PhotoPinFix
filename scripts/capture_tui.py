@@ -296,7 +296,7 @@ def run(args):
             x.wait(x.find_window, "real xterm window appears")
             x.wait(lambda: transcript.contains("找到 5 张照片"), "TUI metadata scan completes")
             x.key("a")
-            x.wait(lambda: transcript.contains("绿2 黄2 红1"), "all three GPS states are visible")
+            x.wait(lambda: all(transcript.contains(label) for label in ("原有GPS 2", "自动待写 2", "待指定 1", "手动待写 0", "已写入 0")), "all five GPS workflow counts are visible")
             image_marker = transcript.mark_images()
             x.key("j")
             x.wait(lambda: transcript.selected(paths[1].name), "landscape photo is selected")

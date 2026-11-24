@@ -1,7 +1,8 @@
 # Native GUI integration test
 
-These are Linux development tools, not application dependencies. The shipped
-executable does not run Python, Perl, Xvfb or ExifTool.
+These are development tools, not application dependencies. The shipped
+executable does not run Python, Perl, Xvfb or ExifTool. Linux tests use a private
+virtual desktop; Windows and macOS captures use the runner's actual desktop.
 
 Prepare local Xvfb without sudo using `bash scripts/prepare_gui_test.sh`. The
 script also obtains the embedded font and its license. It uses the distribution
@@ -48,14 +49,25 @@ It creates a real controlling PTY, requires the launcher to exit successfully,
 then closes the PTY before interacting with the detached window. It checks that
 the window has its own Unix session and no controlling terminal, displays the
 welcome page even when its working directory contains an image, and remains
-usable after the terminal closes. The test clicks the welcome action, types a
-folder path containing Chinese characters and spaces, confirms the built-in
-folder picker with the mouse, and waits for actual photo pixels. It then closes
+usable after the terminal closes. The test clicks the welcome action, cancels
+the desktop's real GTK folder selector, reopens it, then selects a real folder
+whose name contains Chinese characters and spaces. GTK's native list search
+uses its ASCII prefix; the returned URI retains the complete Unicode path.
+The test confirms the selection and waits for actual photo pixels. It then closes
 the window and verifies an observed successful exit plus unchanged photo bytes,
 file times and identity. Its `gui-launch-*.png`, launcher/Xvfb logs and
 `gui-launch-report.json` describe this separate acceptance result. No desktop
 file chooser program, clipboard utility or shell command is available on the
-application's empty PATH.
+application's empty PATH. The Linux app calls XDG Desktop Portal over D-Bus;
+the test starts real `xdg-desktop-portal` and `xdg-desktop-portal-gtk` services
+on its private bus. The services must support FileChooser API v3 or newer
+(portal 1.8 or later); older backends only support files. Install those packages
+plus `dbus` and `libglib2.0-bin` for
+development, or point `PHOTOPINFIX_TEST_PORTAL` and
+`PHOTOPINFIX_TEST_PORTAL_GTK` at extracted executables. The test also recognizes
+`tools/gui-test/portal-root/usr/libexec`. It uses a disposable copy of the
+bundled Chinese font for GTK. A missing portal or missing native dialog fails
+the acceptance test; no fake response or custom picker is substituted.
 
 Writing a photo keeps the other reviewed candidates unchanged, matching the
 TUI; each confirmed batch uses the exact candidates shown in its confirmation
@@ -71,12 +83,38 @@ when the filesystem exposes birth time. Metadata is inspected only after the
 application has gracefully exited and joined its I/O worker. This avoids races
 between the independent oracle and application access-time guards.
 
-A successful test establishes this Linux/X11 configuration; native Windows and
-macOS detached-launch and UI behavior still require acceptance on those
-platforms. The PTY/session assertions are Linux-specific and are not evidence
-that Windows process flags or macOS terminal closing have been exercised.
-Linux CI runs both scripts and retains `gui-launch-*` diagnostics if the launch
-acceptance fails; existing desktop/TUI screenshot artifacts remain separate.
-Test screenshots
-and logs are local development artifacts and should not be committed or shared
-without checking that displayed paths contain no personal information.
+A successful launch test establishes this Linux/X11 configuration. The
+PTY/session assertions are Linux-specific and do not establish Windows process
+flag behavior or macOS behavior after a terminal closes. Linux CI runs both
+scripts and retains `gui-launch-*` diagnostics if acceptance fails.
+
+Windows and macOS CI additionally run:
+
+```sh
+python scripts/capture_native_gui.py path/to/photopinfix --output target/native-screenshots
+```
+
+On Windows use the `.exe` path. The development harness needs Pillow and the
+independent Perl/ExifTool oracle. macOS additionally uses
+`pyobjc-framework-Quartz` and `pyobjc-framework-Cocoa`; it sends input through
+the system `osascript`/System Events and captures the actual window's screen
+region with `screencapture`. It never edits privacy-permission databases. The
+runner must provide an interactive desktop and permit native automation and
+screen capture. Missing permissions cause an explicit failure report, not a
+synthetic image or a successful skip. Windows uses native Win32 window/input
+APIs and real desktop captures.
+
+The capture sequence records a public landscape photo, the coordinate editor,
+and the OS-native folder dialog (COM on Windows, NSOpenPanel on macOS), then
+cancels the picker, resizes the real client viewport to 880 × 640, and captures
+its photo and location tabs. It verifies unchanged photo bytes and times. It recognizes
+macOS attached sheets through the actual accessibility tree as well as separate
+windows. The copied application runs outside the checkout with an empty PATH.
+These captures exercise real rendering and picker cancellation; they do not
+replace platform-specific detached-launch or confirmed-write acceptance.
+
+All three CI jobs upload `photopinfix-<target>-gui-screenshots`; the original
+Linux desktop/TUI screenshot artifact remains available. `capture-report.json`
+records success or the reason capture failed. Screenshots and logs should be
+reviewed for personal paths before sharing; the fixtures use disposable sample
+folders rather than a user's photo library.

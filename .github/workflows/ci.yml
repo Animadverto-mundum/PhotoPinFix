@@ -79,7 +79,7 @@ jobs:
         run: |
           sudo apt-get update
           # winit loads libxkbcommon-x11 at runtime; libxkbcommon-dev does not provide it.
-          sudo apt-get install -y pkg-config libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libgl1-mesa-dri libxtst6 xvfb xterm fonts-dejavu-core
+          sudo apt-get install -y pkg-config libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libgl1-mesa-dev libgl1-mesa-dri libxtst6 xvfb xterm fonts-dejavu-core fonts-noto-cjk dbus libglib2.0-bin xdg-desktop-portal xdg-desktop-portal-gtk
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
         with:
@@ -225,6 +225,25 @@ jobs:
           name: photopinfix-${{ matrix.target }}-gui-launch-diagnostics
           path: target/test-artifacts/gui-launch-*
           if-no-files-found: warn
+          retention-days: 7
+      - name: Install macOS native-window capture bindings
+        if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        run: python -m pip install pyobjc-framework-Quartz pyobjc-framework-Cocoa
+      - name: Capture real Windows or macOS desktop and native folder dialog
+        id: native_screenshots
+        if: runner.os != 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        run: python scripts/capture_native_gui.py ./target/${{ matrix.target }}/release/photopinfix${{ matrix.extension }} --output target/native-screenshots
+      - name: Retain native screenshots and capture diagnostics for this platform
+        if: always() && (steps.gui.outcome == 'success' || steps.gui_launch.outcome == 'success' || steps.native_screenshots.outcome == 'success' || steps.native_screenshots.outcome == 'failure')
+        uses: actions/upload-artifact@v7
+        with:
+          name: photopinfix-${{ matrix.target }}-gui-screenshots
+          path: |
+            target/readme-screenshots/*.png
+            target/test-artifacts/gui-launch-02-native-folder-picker.png
+            target/test-artifacts/gui-12*.png
+            target/native-screenshots/*
+          if-no-files-found: error
           retention-days: 7
       - name: Verify package contents and matching source checksums
         if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)

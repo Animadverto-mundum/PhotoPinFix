@@ -1,5 +1,5 @@
 use photopinfix::{
-    map::{MapPoint, MapRenderer, MapScale, MapView},
+    map::{self, MapPoint, MapRenderer, MapResult, MapScale, MapView},
     metadata::{MetadataTool, ScanResult},
     model::Candidate,
     preview,
@@ -23,13 +23,7 @@ use std::{
 pub enum Response {
     Scan(u64, Result<ScanResult, String>),
     Photo(u64, Result<Protocol, String>),
-    Map(
-        u64,
-        Result<Protocol, String>,
-        String,
-        String,
-        Option<MapScale>,
-    ),
+    Map(u64, MapResult),
     Written(u64, usize, Candidate, Result<(), String>),
     WriteFinished(u64, usize, usize),
 }
@@ -41,10 +35,8 @@ pub struct PhotoRequest {
 }
 pub struct MapRequest {
     pub id: u64,
-    pub points: Vec<MapPoint>,
     pub view: MapView,
     pub size: Size,
-    pub background: bool,
     pub source: usize,
     pub cancel: Arc<AtomicBool>,
 }
@@ -57,6 +49,7 @@ pub struct Workers {
     io: Arc<IoGate>,
     threads: Vec<JoinHandle<()>>,
     map_cancel: Option<Arc<AtomicBool>>,
+    map_picker: Picker,
 }
 
 /// All reads and writes share this gate because restoring a file's access time
@@ -120,15 +113,12 @@ impl Workers {
                 }
             }
         });
+        let map_picker = picker.clone();
         let map_results = tx.clone();
         let map_io = io.clone();
         let map_thread = thread::spawn(move || {
             let mut renderer = MapRenderer::new();
             let picker = picker;
-            let halfblocks = picker.protocol_type() == ProtocolType::Halfblocks;
-            if halfblocks {
-                renderer.set_marker_radii(1, 2, 1);
-            }
             while let Ok(mut request) = map_rx.recv() {
                 while let Ok(newer) = map_rx.try_recv() {
                     request = newer;
@@ -139,53 +129,18 @@ impl Workers {
                 if request.cancel.load(Ordering::Relaxed) {
                     continue;
                 }
-                let font = picker.font_size();
-                let (width, height) = if halfblocks {
-                    // A half-block cell represents exactly two image pixels.
-                    // Rendering at font resolution would shrink point markers
-                    // until normal photos became almost invisible.
-                    (request.size.width as u32, request.size.height as u32 * 2)
-                } else {
-                    (
-                        (request.size.width as u32 * font.width as u32).clamp(1, 2400),
-                        (request.size.height as u32 * font.height as u32).clamp(1, 1600),
-                    )
-                };
-                let result = renderer.render_cancellable(
-                    &request.points,
+                let [width, height] = map_dimensions(&picker, request.size);
+                let result = renderer.render_background_cancellable(
                     &request.view,
                     width,
                     height,
-                    request.background,
                     request.source,
                     &request.cancel,
                 );
                 if request.cancel.load(Ordering::Relaxed) {
                     continue;
                 }
-                let image_width = result.image.width();
-                let image_height = result.image.height();
-                let protocol = if halfblocks {
-                    Halfblocks::new(result.image, request.size).map(Protocol::Halfblocks)
-                } else {
-                    picker.new_protocol(result.image, request.size, Resize::Fit(None))
-                }
-                .map_err(|e| e.to_string());
-                let scale = protocol.as_ref().ok().and_then(|protocol| {
-                    request
-                        .view
-                        .scale(image_width, image_height, protocol.size().width)
-                });
-                if map_results
-                    .send(Response::Map(
-                        request.id,
-                        protocol,
-                        result.status,
-                        result.attribution,
-                        scale,
-                    ))
-                    .is_err()
-                {
+                if map_results.send(Response::Map(request.id, result)).is_err() {
                     break;
                 }
             }
@@ -198,7 +153,38 @@ impl Workers {
             io,
             threads: vec![photo_thread, map_thread],
             map_cancel: None,
+            map_picker,
         }
+    }
+
+    pub fn map_dimensions(&self, size: Size) -> [u32; 2] {
+        map_dimensions(&self.map_picker, size)
+    }
+
+    /// This path performs no I/O: current markers are composited immediately,
+    /// independently of an outstanding network request for background tiles.
+    pub fn compose_map(
+        &self,
+        background: Option<&image::DynamicImage>,
+        points: &[MapPoint],
+        view: &MapView,
+        size: Size,
+    ) -> (Result<Protocol, String>, Option<MapScale>) {
+        let dimensions = self.map_dimensions(size);
+        let halfblocks = self.map_picker.protocol_type() == ProtocolType::Halfblocks;
+        let radii = if halfblocks { (1, 2, 1) } else { (3, 7, 2) };
+        let image = map::compose_points(background, points, view, dimensions, radii);
+        let protocol = if halfblocks {
+            Halfblocks::new(image, size).map(Protocol::Halfblocks)
+        } else {
+            self.map_picker.new_protocol(image, size, Resize::Fit(None))
+        }
+        .map_err(|error| error.to_string());
+        let scale = protocol
+            .as_ref()
+            .ok()
+            .and_then(|protocol| view.scale(dimensions[0], dimensions[1], protocol.size().width));
+        (protocol, scale)
     }
 
     pub fn request_photo(&self, request: PhotoRequest) {
@@ -293,10 +279,94 @@ impl Drop for Workers {
     }
 }
 
+fn map_dimensions(picker: &Picker, size: Size) -> [u32; 2] {
+    if picker.protocol_type() == ProtocolType::Halfblocks {
+        [
+            u32::from(size.width).clamp(1, 2048),
+            (u32::from(size.height) * 2).clamp(1, 1536),
+        ]
+    } else {
+        let font = picker.font_size();
+        [
+            (u32::from(size.width) * u32::from(font.width)).clamp(1, 2048),
+            (u32::from(size.height) * u32::from(font.height)).clamp(1, 1536),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use photopinfix::model::Coordinates;
+    use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
     use std::time::Duration;
+
+    #[test]
+    fn terminal_points_refresh_while_background_requests_are_still_pending() {
+        let (tx, rx) = mpsc::channel();
+        let (map_tx, map_rx) = mpsc::channel();
+        let mut workers = Workers {
+            tx,
+            rx,
+            photo: None,
+            map: Some(map_tx),
+            io: Arc::new(IoGate::default()),
+            threads: Vec::new(),
+            map_cancel: None,
+            map_picker: Picker::halfblocks(),
+        };
+        let old_point = MapPoint {
+            coordinates: Coordinates::new(30.0, 120.0).unwrap(),
+            selected: true,
+            existing: true,
+        };
+        let new_point = MapPoint {
+            coordinates: Coordinates::new(30.02, 120.02).unwrap(),
+            selected: true,
+            existing: false,
+        };
+        let view = MapView::fit(&[old_point, new_point]);
+        let size = Size::new(80, 30);
+        let old_cancel = Arc::new(AtomicBool::new(false));
+        workers.request_map(MapRequest {
+            id: 1,
+            view: view.clone(),
+            size,
+            source: 0,
+            cancel: old_cancel.clone(),
+        });
+        let held_request = map_rx.recv().unwrap();
+        let (old_image, _) = workers.compose_map(None, &[old_point], &view, size);
+        workers.request_map(MapRequest {
+            id: 2,
+            view: view.clone(),
+            size,
+            source: 0,
+            cancel: Arc::new(AtomicBool::new(false)),
+        });
+        assert!(held_request.cancel.load(Ordering::Relaxed));
+        assert!(old_cancel.load(Ordering::Relaxed));
+        assert_eq!(map_rx.recv().unwrap().id, 2);
+        // Neither request has a response. The current terminal image and metric
+        // ruler must already exist, and old-session green dots must be gone.
+        let (new_image, scale) = workers.compose_map(None, &[new_point], &view, size);
+        assert!(scale.is_some());
+        let rect = Rect::new(0, 0, size.width, size.height);
+        let mut before = Buffer::empty(rect);
+        let mut after = Buffer::empty(rect);
+        ratatui_image::Image::new(&old_image.unwrap()).render(rect, &mut before);
+        ratatui_image::Image::new(&new_image.unwrap()).render(rect, &mut after);
+        let contains = |buffer: &Buffer, color| {
+            buffer
+                .content()
+                .iter()
+                .any(|cell| cell.fg == color || cell.bg == color)
+        };
+        assert!(contains(&before, Color::Rgb(76, 220, 128)));
+        assert!(!contains(&after, Color::Rgb(76, 220, 128)));
+        assert!(contains(&after, Color::Rgb(255, 209, 76)));
+        assert!(workers.rx.try_recv().is_err());
+    }
 
     #[test]
     fn shutdown_waits_for_active_read_cleanup_and_skips_queued_reads() {
@@ -337,6 +407,7 @@ mod tests {
             io,
             threads: vec![active, queued],
             map_cancel: Some(map_cancel.clone()),
+            map_picker: Picker::halfblocks(),
         };
         // Stop requests first so the test can deterministically release active
         // I/O after cancellation, independently of thread scheduling.

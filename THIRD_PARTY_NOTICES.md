@@ -11,6 +11,8 @@ it does not assign a license to PhotoPinFix's original application code.
 | libheif-rs and libheif-sys | Rust HEIF bindings | MIT; [upstream](https://github.com/Cykooz/libheif-rs), each crate's license files |
 | PCRE2 and pcre2-sys | Regular expressions used by the metadata engine | PCRE2 BSD-style terms and Rust wrapper MIT terms; included in the vendored `pcre2-sys` source and license files |
 | eframe / egui 0.37 | Native desktop window, controls and texture rendering | MIT OR Apache-2.0; [upstream](https://github.com/emilk/egui), complete notices in the vendored crates |
+| rfd 0.15.4 | Windows and macOS native folder dialogs | MIT; [upstream](https://github.com/PolyMeilex/rfd), license in the vendored crate |
+| ashpd 0.11.1 | Linux native FileChooser portal connection | MIT; [upstream](https://github.com/bilelmoussaoui/ashpd), license in the vendored crate |
 | Noto Sans SC Regular, Sans2.004 | Embedded Simplified Chinese GUI font | SIL Open Font License 1.1; [upstream](https://github.com/notofonts/noto-cjk/tree/Sans2.004/Sans), original font, `OFL.txt` and source information in `assets/fonts/` |
 | Other Rust crates | Terminal UI, window systems, image formats, HTTP and support code | Exact versions, declared terms and source URLs are retained in `Cargo.lock` and the vendored crate directories |
 

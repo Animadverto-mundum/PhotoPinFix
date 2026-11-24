@@ -3,8 +3,6 @@
 //! There is one pending request and one pending response; a busy map service
 //! cannot accumulate a queue of image buffers while the user moves the view.
 use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -13,6 +11,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
+use crate::gui_theme::{META, MUTED, TEXT, TITLE};
 use eframe::egui::{
     self, Align2, Color32, ColorImage, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureHandle,
     TextureOptions, Vec2,
@@ -22,18 +21,14 @@ use photopinfix::map::{self, MapPoint, MapRenderer, MapScale, MapView};
 const SCALE_CELL_POINTS: f32 = 8.0;
 const MAP_COLOR: Color32 = Color32::from_rgb(241, 246, 242);
 const INK: Color32 = Color32::from_rgb(32, 44, 50);
-const MUTED: Color32 = Color32::from_rgb(111, 126, 121);
 const TEAL: Color32 = Color32::from_rgb(23, 122, 105);
 const AMBER: Color32 = Color32::from_rgb(183, 124, 35);
 const GRID: Color32 = Color32::from_rgb(222, 232, 225);
 
 struct RenderRequest {
     generation: u64,
-    points: Vec<MapPoint>,
     view: MapView,
     size: [u32; 2],
-    display_width: f32,
-    background: bool,
     source: usize,
     cancel: Arc<AtomicBool>,
 }
@@ -43,8 +38,6 @@ struct RenderResponse {
     image: ColorImage,
     status: String,
     attribution: String,
-    scale: Option<MapScale>,
-    scale_fraction: f32,
 }
 
 /// Call `show` in the map's allocated panel. Set `reset_view` when changing
@@ -52,6 +45,7 @@ struct RenderResponse {
 pub struct GuiMap {
     view: MapView,
     fitted: bool,
+    scope: u64,
     background: bool,
     source: usize,
     sources: Vec<String>,
@@ -63,8 +57,6 @@ pub struct GuiMap {
     worker: Option<JoinHandle<()>>,
     cancel: Option<Arc<AtomicBool>>,
     texture: Option<TextureHandle>,
-    scale: Option<MapScale>,
-    scale_fraction: f32,
     status: String,
     attribution: String,
     loading: bool,
@@ -91,20 +83,10 @@ impl GuiMap {
                 if request.cancel.load(Ordering::Relaxed) {
                     continue;
                 }
-                // Maintain visible marker sizes on both ordinary and high-DPI
-                // displays, including when the image hits its size limit.
-                let pixel_ratio = request.size[0] as f32 / request.display_width.max(1.0);
-                renderer.set_marker_radii(
-                    (3.0 * pixel_ratio).round().max(1.0) as u32,
-                    (7.0 * pixel_ratio).round().max(2.0) as u32,
-                    (2.0 * pixel_ratio).round().max(1.0) as u32,
-                );
-                let result = renderer.render_cancellable(
-                    &request.points,
+                let result = renderer.render_background_cancellable(
                     &request.view,
                     request.size[0],
                     request.size[1],
-                    request.background,
                     request.source,
                     &request.cancel,
                 );
@@ -112,16 +94,6 @@ impl GuiMap {
                     continue;
                 }
                 let rgba = result.image.to_rgba8();
-                // Reuse the terminal's metric calculation with virtual cells.
-                // The ruler's fraction is carried with this exact image, so
-                // asynchronous zoom/resize cannot mismatch the visible scale.
-                let columns = (request.display_width / SCALE_CELL_POINTS)
-                    .floor()
-                    .clamp(1.0, f32::from(u16::MAX)) as u16;
-                let scale = request.view.scale(rgba.width(), rgba.height(), columns);
-                let scale_fraction = scale
-                    .as_ref()
-                    .map_or(0.0, |scale| f32::from(scale.cells) / f32::from(columns));
                 let image = ColorImage::from_rgba_unmultiplied(
                     [rgba.width() as usize, rgba.height() as usize],
                     rgba.as_raw(),
@@ -136,8 +108,6 @@ impl GuiMap {
                     image,
                     status: result.status,
                     attribution: result.attribution,
-                    scale,
-                    scale_fraction,
                 });
                 context.request_repaint();
             }
@@ -145,6 +115,7 @@ impl GuiMap {
         Self {
             view: MapView::default(),
             fitted: false,
+            scope: 0,
             background: false,
             source: 0,
             sources: map::sources(),
@@ -156,8 +127,6 @@ impl GuiMap {
             worker: Some(worker),
             cancel: None,
             texture: None,
-            scale: None,
-            scale_fraction: 0.0,
             status: "无底图".into(),
             attribution: String::new(),
             loading: false,
@@ -165,8 +134,8 @@ impl GuiMap {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, points: &[MapPoint], reset_view: bool) {
-        self.receive(ui.ctx());
         if reset_view || !self.fitted {
+            self.scope = self.scope.wrapping_add(1);
             self.view = MapView::fit(points);
             self.fitted = true;
         }
@@ -174,10 +143,10 @@ impl GuiMap {
             ui.spacing_mut().button_padding = Vec2::new(7.0, 3.0);
             ui.spacing_mut().item_spacing = Vec2::new(5.0, 6.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("位置分布").size(14.0).strong().color(INK));
+                ui.label(RichText::new("位置分布").size(TITLE).strong().color(INK));
                 ui.label(
                     RichText::new(points.len().to_string())
-                        .size(11.0)
+                        .size(META)
                         .color(MUTED),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -206,14 +175,14 @@ impl GuiMap {
                 if self.background {
                     egui::ComboBox::from_id_salt("photopinfix-map-source")
                         .width(ui.available_width().max(60.0))
-                        .selected_text(RichText::new(&self.sources[self.source]).size(11.0))
+                        .selected_text(RichText::new(&self.sources[self.source]).size(META))
                         .show_ui(ui, |ui| {
                             for (index, source) in self.sources.iter().enumerate() {
                                 ui.selectable_value(&mut self.source, index, source);
                             }
                         });
                 } else {
-                    ui.label(RichText::new("无底图 · 参考网格").size(11.0).color(MUTED));
+                    ui.label(RichText::new("无底图 · 参考网格").size(META).color(MUTED));
                 }
             });
         });
@@ -249,8 +218,9 @@ impl GuiMap {
         }
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 7.0, MAP_COLOR);
-        if self.background {
-            self.submit_if_changed(ui.ctx(), points, render_size, size.x);
+        if self.background && !points.is_empty() {
+            self.submit_if_changed(ui.ctx(), render_size);
+            self.receive(ui.ctx());
             if let Some(texture) = &self.texture {
                 painter.image(
                     texture.id(),
@@ -258,13 +228,8 @@ impl GuiMap {
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
                     Color32::WHITE,
                 );
-                paint_overlays(
-                    &painter,
-                    rect,
-                    self.scale.as_ref(),
-                    self.scale_fraction,
-                    &self.attribution,
-                );
+                paint_map_points(&painter, rect, &self.view, points, render_size);
+                paint_current_scale(&painter, rect, &self.view, render_size, &self.attribution);
             } else {
                 // Locations remain usable while the first tile request loads.
                 paint_offline_map(&painter, rect, &self.view, points, render_size);
@@ -278,22 +243,32 @@ impl GuiMap {
                 rect.center(),
                 Align2::CENTER_CENTER,
                 "当前范围暂无 GPS 位置",
-                FontId::proportional(13.0),
+                FontId::proportional(META),
                 MUTED,
             );
         }
         painter.rect_stroke(rect, 7.0, Stroke::new(1.0, GRID), egui::StrokeKind::Inside);
-        response
-            .on_hover_text("滚轮缩放 · 拖动平移 · 绿色为已有 GPS，黄色为待补全 · 大点为当前照片");
-        let status = if !self.background {
+        response.on_hover_text(
+            "滚轮缩放 · 拖动平移 · 绿色为文件已定位，黄色为建议位置 · 大点为当前照片",
+        );
+        let status = if points.is_empty() {
+            "当前范围暂无 GPS 位置".to_owned()
+        } else if !self.background {
             "拖动平移 · 滚轮缩放".to_owned()
         } else if self.loading {
             "正在加载底图…".to_owned()
         } else {
             self.status.clone()
         };
-        ui.add(egui::Label::new(RichText::new(&status).size(11.0).color(MUTED)).truncate())
-            .on_hover_text(status);
+        ui.horizontal(|ui| {
+            if self.loading {
+                ui.add(egui::Spinner::new().size(12.0).color(TEAL));
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(50));
+            }
+            ui.add(egui::Label::new(RichText::new(&status).size(META).color(MUTED)).truncate())
+                .on_hover_text(status);
+        });
     }
 
     /// Offline markers are drawn directly, without an image worker or network.
@@ -315,7 +290,6 @@ impl GuiMap {
             .unwrap_or_else(|error| error.into_inner())
             .take();
         self.texture = None;
-        self.scale = None;
         self.attribution.clear();
         self.loading = false;
     }
@@ -340,26 +314,11 @@ impl GuiMap {
         }
         self.status = response.status;
         self.attribution = response.attribution;
-        self.scale = response.scale;
-        self.scale_fraction = response.scale_fraction;
         self.loading = false;
     }
 
-    fn submit_if_changed(
-        &mut self,
-        context: &egui::Context,
-        points: &[MapPoint],
-        size: [u32; 2],
-        display_width: f32,
-    ) {
-        let key = request_key(
-            points,
-            &self.view,
-            size,
-            display_width,
-            self.background,
-            self.source,
-        );
+    fn submit_if_changed(&mut self, context: &egui::Context, size: [u32; 2]) {
+        let key = map::background_key(&self.view, size, self.source, self.scope);
         if self.requested_key == Some(key) || self.wake.is_none() {
             return;
         }
@@ -368,6 +327,10 @@ impl GuiMap {
         }
         self.generation = self.generation.wrapping_add(1);
         self.requested_key = Some(key);
+        // A previous view is never stretched under current points while tiles
+        // load. Display the current offline grid until this exact view arrives.
+        self.texture = None;
+        self.attribution.clear();
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancel = Some(Arc::clone(&cancel));
         *self
@@ -375,11 +338,8 @@ impl GuiMap {
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = Some(RenderRequest {
             generation: self.generation,
-            points: points.to_vec(),
             view: self.view.clone(),
             size,
-            display_width,
-            background: self.background,
             source: self.source,
             cancel,
         });
@@ -453,40 +413,9 @@ fn zoom_at(view: &mut MapView, delta: f64, anchor: Vec2, display: Vec2, size: [u
     view.center_y = (view.center_y + y * (before - after)).clamp(0.0, 1.0);
 }
 
-fn request_key(
-    points: &[MapPoint],
-    view: &MapView,
-    size: [u32; 2],
-    display_width: f32,
-    background: bool,
-    source: usize,
-) -> u64 {
-    let mut state = DefaultHasher::new();
-    for point in points {
-        point.coordinates.lat.to_bits().hash(&mut state);
-        point.coordinates.lon.to_bits().hash(&mut state);
-        point.selected.hash(&mut state);
-        point.existing.hash(&mut state);
-    }
-    for value in [
-        view.center_x,
-        view.center_y,
-        view.span_x,
-        view.span_y,
-        view.zoom,
-    ] {
-        value.to_bits().hash(&mut state);
-    }
-    size.hash(&mut state);
-    display_width.to_bits().hash(&mut state);
-    background.hash(&mut state);
-    source.hash(&mut state);
-    state.finish()
-}
-
 fn mode_button(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
     ui.add(
-        egui::Button::new(RichText::new(label).size(11.0).color(if selected {
+        egui::Button::new(RichText::new(label).size(TEXT).color(if selected {
             TEAL
         } else {
             MUTED
@@ -509,6 +438,17 @@ fn paint_offline_map(
     size: [u32; 2],
 ) {
     paint_reference_grid(painter, rect, view, size);
+    paint_map_points(painter, rect, view, points, size);
+    paint_current_scale(painter, rect, view, size, "");
+}
+
+fn paint_map_points(
+    painter: &egui::Painter,
+    rect: Rect,
+    view: &MapView,
+    points: &[MapPoint],
+    size: [u32; 2],
+) {
     // Draw the selected photo last so coincident positions remain visible.
     for selected in [false, true] {
         for point in points.iter().filter(|point| point.selected == selected) {
@@ -534,16 +474,16 @@ fn paint_offline_map(
     }
 
     if rect.width() > 180.0 && rect.height() > 100.0 {
-        let legend = Rect::from_min_size(rect.min + Vec2::splat(10.0), Vec2::new(129.0, 23.0));
+        let legend = Rect::from_min_size(rect.min + Vec2::splat(10.0), Vec2::new(186.0, 25.0));
         painter.rect_filled(legend, 5.0, Color32::from_white_alpha(230));
-        for (x, color, label) in [(10.0, TEAL, "已有 GPS"), (79.0, AMBER, "待写入")] {
+        for (x, color, label) in [(10.0, TEAL, "文件已定位"), (88.0, AMBER, "建议位置")] {
             let center = legend.min + Vec2::new(x, 11.5);
             painter.circle_filled(center, 3.0, color);
             painter.text(
                 center + Vec2::new(7.0, 0.0),
                 Align2::LEFT_CENTER,
                 label,
-                FontId::proportional(10.0),
+                FontId::proportional(META),
                 MUTED,
             );
         }
@@ -551,7 +491,7 @@ fn paint_offline_map(
             Pos2::new(rect.right() - 17.0, rect.top() + 14.0),
             Align2::CENTER_TOP,
             "N",
-            FontId::proportional(10.0),
+            FontId::proportional(META),
             MUTED,
         );
         let tip = Pos2::new(rect.right() - 17.0, rect.top() + 31.0);
@@ -559,6 +499,15 @@ fn paint_offline_map(
         painter.line_segment([tip, tip + Vec2::new(-3.0, 4.0)], Stroke::new(1.0, MUTED));
         painter.line_segment([tip, tip + Vec2::new(3.0, 4.0)], Stroke::new(1.0, MUTED));
     }
+}
+
+fn paint_current_scale(
+    painter: &egui::Painter,
+    rect: Rect,
+    view: &MapView,
+    size: [u32; 2],
+    attribution: &str,
+) {
     let columns = (rect.width() / SCALE_CELL_POINTS)
         .floor()
         .clamp(1.0, f32::from(u16::MAX)) as u16;
@@ -566,7 +515,7 @@ fn paint_offline_map(
     let fraction = scale
         .as_ref()
         .map_or(0.0, |scale| f32::from(scale.cells) / f32::from(columns));
-    paint_overlays(painter, rect, scale.as_ref(), fraction, "");
+    paint_overlays(painter, rect, scale.as_ref(), fraction, attribution);
 }
 
 /// A reference grid in the same projected coordinates as the markers. Lines
@@ -624,7 +573,7 @@ fn paint_overlays(
     if !attribution.is_empty() {
         let galley = painter.layout(
             attribution.to_owned(),
-            FontId::proportional(11.0),
+            FontId::proportional(META),
             INK,
             (rect.width() - 18.0).max(1.0),
         );
@@ -640,7 +589,7 @@ fn paint_overlays(
     if let Some(scale) = scale {
         let width = rect.width() * scale_fraction;
         let start = Pos2::new(rect.left() + 12.0, bottom - 5.0);
-        let label = painter.layout_no_wrap(scale.label.clone(), FontId::proportional(11.0), INK);
+        let label = painter.layout_no_wrap(scale.label.clone(), FontId::proportional(META), INK);
         let bg = Rect::from_min_max(
             Pos2::new(start.x - 5.0, start.y - label.size().y - 12.0),
             Pos2::new(start.x + width.max(label.size().x) + 5.0, start.y + 9.0),
@@ -719,21 +668,53 @@ mod tests {
     }
 
     #[test]
-    fn marker_changes_invalidate_pending_image() {
-        let mut points = [point(1.0, 2.0)];
-        let view = MapView::fit(&points);
-        let key = request_key(&points, &view, [600, 400], 600.0, false, 0);
-        points[0].selected = true;
-        assert_ne!(
-            key,
-            request_key(&points, &view, [600, 400], 600.0, false, 0)
-        );
-        points[0].selected = false;
-        points[0].existing = false;
-        assert_ne!(
-            key,
-            request_key(&points, &view, [600, 400], 600.0, false, 0)
-        );
+    fn delayed_background_cannot_restore_old_session_or_restart_for_marker_changes() {
+        let context = egui::Context::default();
+        let mut map = GuiMap::new(&context);
+        // Replace the network worker with a controlled response source. Nothing
+        // is downloaded, and completion can occur after the session changes.
+        map.shutdown();
+        let (wake, _receiver) = mpsc::sync_channel(1);
+        map.wake = Some(wake);
+        map.background = true;
+        map.scope = 1;
+        map.view = MapView::fit(&[point(120.0, 30.0)]);
+        map.submit_if_changed(&context, [300, 200]);
+        let old_generation = map.generation;
+        let old_cancel = map.cancel.as_ref().unwrap().clone();
+        let completed = |generation| RenderResponse {
+            generation,
+            image: ColorImage::from_rgba_unmultiplied([1, 1], &[30, 40, 50, 255]),
+            status: "test background".into(),
+            attribution: "test source".into(),
+        };
+        *map.response.lock().unwrap() = Some(completed(old_generation));
+        map.receive(&context);
+        assert!(map.texture.is_some());
+
+        // A new session invalidates the old background, even at the same place.
+        map.scope = 2;
+        map.submit_if_changed(&context, [300, 200]);
+        assert!(old_cancel.load(Ordering::Relaxed));
+        assert!(map.texture.is_none());
+        assert!(map.attribution.is_empty());
+        assert!(map.loading);
+        let current_generation = map.generation;
+        *map.response.lock().unwrap() = Some(completed(old_generation));
+        map.receive(&context);
+        assert!(map.texture.is_none());
+        assert!(map.loading);
+
+        // Dots are supplied to the paint pass, not this background request.
+        // Repainting after selection or manual edits reuses the pending view.
+        map.submit_if_changed(&context, [300, 200]);
+        assert_eq!(map.generation, current_generation);
+        assert!(!map.cancel.as_ref().unwrap().load(Ordering::Relaxed));
+        *map.response.lock().unwrap() = Some(completed(current_generation));
+        map.receive(&context);
+        assert!(map.texture.is_some());
+        assert!(!map.loading);
+        assert_eq!(map.attribution, "test source");
     }
 
     #[test]
@@ -747,11 +728,8 @@ mod tests {
         map.cancel = Some(Arc::clone(&cancel));
         *map.request.lock().unwrap() = Some(RenderRequest {
             generation: 7,
-            points: vec![point(1.0, 2.0)],
             view: MapView::default(),
             size: [300, 200],
-            display_width: 300.0,
-            background: true,
             source: 0,
             cancel: Arc::clone(&cancel),
         });
@@ -768,8 +746,6 @@ mod tests {
             image: ColorImage::from_rgba_unmultiplied([1, 1], &[0, 0, 0, 255]),
             status: "stale online image".into(),
             attribution: "stale attribution".into(),
-            scale: None,
-            scale_fraction: 0.0,
         });
         map.receive(&context);
         assert!(map.texture.is_none());
