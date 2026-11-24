@@ -85,6 +85,39 @@ class Tui:
         compact = "".join(text.split())
         return self.until(lambda screen: compact in "".join(screen.split()), text, seconds)
 
+    @staticmethod
+    def modal_visible(screen, title):
+        # pyte can lose the left corner when it overwrites a CJK continuation
+        # cell. Match the full title followed by its horizontal border on the
+        # same line; status/help text containing the title has no such border.
+        marker = "".join(title.split()) + "──"
+        return any(marker in "".join(line.split()) for line in screen.splitlines())
+
+    def expect_modal(self, title, seconds=40):
+        return self.until(lambda screen: self.modal_visible(screen, title), f"{title} dialog", seconds)
+
+    def expect_modal_closed(self, title, ready="PhotoPinFix", seconds=40):
+        expected = "".join(ready.split())
+
+        def closed(screen):
+            compact = "".join(screen.split())
+            return not self.modal_visible(screen, title) and expected in compact
+
+        # Background counts/status remain visible under a modal. They cannot
+        # acknowledge Esc/Enter by themselves. Also reject an empty clear frame
+        # while the terminal is between the modal and its replacement view.
+        return self.until(closed, f"{title} closed; {ready}", seconds)
+
+    def expect_selected(self, filename, seconds=40):
+        name = "".join(filename.split())
+        return self.until(
+            lambda screen: any(
+                "›" in line and name in "".join(line.split())
+                for line in screen.splitlines()
+            ),
+            f"selected photo {filename}", seconds,
+        )
+
     def key(self, text):
         self.child.send(text)
 
@@ -146,15 +179,16 @@ def main():
         tui.until(lambda screen: "├" in screen and (" m" in screen or " km" in screen), "metric map ruler")
         tui.snapshot("initial")
         tui.key("?")
-        tui.expect("快捷键")
+        tui.expect_modal("快捷键")
         tui.key("\x1b")
-        tui.expect("绿2 黄29 红0")
+        tui.expect_modal_closed("快捷键", "绿2 黄29 红0")
         tui.key("j")
+        tui.expect_selected(files[1].name)
         for key, method in [("p", "copy-previous"), ("n", "copy-next"), ("c", "copy-nearest"), ("i", "time-interpolation")]:
             tui.key(key)
             tui.expect(f"手动选择 {method}")
         tui.key("e")
-        tui.expect("编辑 GPS")
+        tui.expect_modal("编辑 GPS · 坐标输入")
         tui.key("\x1533.5\t\x15-70.25")
         tui.key("\x1bOQ")  # xterm F2
         tui.expect("F3 切换")
@@ -163,44 +197,44 @@ def main():
         tui.key("\x1bOR")  # xterm F3: signed to hemispheres
         tui.expect("70°15′00.000″W")
         tui.key("\r")
-        tui.expect("手动坐标已暂存")
+        tui.expect_modal_closed("编辑 GPS · 坐标输入", "手动坐标已暂存")
         tui.key("s")
-        tui.expect("Settings")
+        tui.expect_modal("Settings · 本次运行")
         tui.snapshot("settings")
         tui.key("\x1bOQ\r")
-        tui.expect("设置已应用")
+        tui.expect_modal_closed("Settings · 本次运行", "设置已应用")
         tui.expect("°")
         tui.key("s")
-        tui.expect("Settings")
+        tui.expect_modal("Settings · 本次运行")
         tui.key("\x1bOQ")
         tui.key("\x159223372036854775807\r")
         tui.expect("过大")
         tui.key("\x1561\t\x15600\r")
-        tui.expect("设置已应用")
+        tui.expect_modal_closed("Settings · 本次运行", "设置已应用")
         tui.key("s")
-        tui.expect("Settings")
+        tui.expect_modal("Settings · 本次运行")
         tui.key("\x1560\r")
-        tui.expect("设置已应用")
+        tui.expect_modal_closed("Settings · 本次运行", "设置已应用")
         tui.key("\r")
-        tui.expect("确认写入")
+        tui.expect_modal("确认写入")
         tui.expect("[取消]")
         tui.key("\x1b")
-        tui.expect("MAN *")
+        tui.expect_modal_closed("确认写入", "MAN *")
         assert not list(directory.glob("*.photopinfix-original")), "cancel wrote metadata"
         tui.key("\r")
-        tui.expect("确认写入")
+        tui.expect_modal("确认写入")
         tui.key("y")
-        tui.expect("成功 1/1")
+        tui.expect_modal_closed("确认写入", "成功 1/1")
         tui.expect("绿3 黄28 红0")
         tui.key("W")
-        tui.expect("确认写入")
+        tui.expect_modal("确认写入")
         tui.key("\r")  # default is cancel
-        tui.expect("绿3 黄28 红0")
+        tui.expect_modal_closed("确认写入", "绿3 黄28 红0")
         assert len(list(directory.glob("*.photopinfix-original"))) == 1
         tui.key("W")
-        tui.expect("确认写入")
+        tui.expect_modal("确认写入")
         tui.key("y")
-        tui.expect("成功 28/28", seconds=120)
+        tui.expect_modal_closed("确认写入", "成功 28/28", seconds=120)
         tui.expect("绿31 黄0 红0")
         tui.key("\x1b[C")
         tui.expect("Session 2/9")
@@ -209,7 +243,7 @@ def main():
         tui.expect("全部照片")
         tui.expect("绿42 黄18 红13")
         tui.key("W")
-        tui.expect("确认写入")
+        tui.expect_modal("确认写入")
         tui.child.setwinsize(24, 80)
         tui.screen.resize(24, 80)
         tui.expect("[确认]")
@@ -219,6 +253,7 @@ def main():
         tui.until(lambda s: "[取消]" in s and "[确认]" in s, "small terminal confirm buttons")
         tui.snapshot("confirm-45x14")
         tui.key("\x1b")
+        tui.expect_modal_closed("确认写入")
         tui.key("q")
         tui.close()
         for path in files:

@@ -160,12 +160,21 @@ jobs:
           PHOTOPINFIX_REQUIRE_RAW: '1'
         run: cargo test --locked --target ${{ matrix.target }} --tests -- --nocapture
       - name: Terminal keyboard workflows without runtime helpers
+        id: tui
         if: runner.os != 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
         env:
           PHOTOPINFIX_TEST_STANDALONE: '1'
         run: |
           python -m pip install pexpect pyte
           python scripts/check_tui.py ./target/${{ matrix.target }}/release/photopinfix
+      - name: Retain terminal failure diagnostics
+        if: failure() && steps.tui.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: photopinfix-${{ matrix.target }}-tui-diagnostics
+          path: target/test-artifacts/tui-*
+          if-no-files-found: warn
+          retention-days: 7
       - name: Native desktop window and confirmed writes without runtime helpers
         id: gui
         if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
