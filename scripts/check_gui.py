@@ -102,10 +102,10 @@ class Oracle:
             "-j", "-n", "-GPSLatitude", "-GPSLongitude", "-XMP-PhotoPinFix:Mode", "-XMP-PhotoPinFix:Method", str(path)))[0])
 
 
-def fixtures(directory, oracle):
+def fixtures(directory, oracle, documentation=False):
     rows = [
         ("001_已有定位.heic", "10:00:00", (-33.6, -70.5)),
-        ("002_手动编辑.png", "10:00:30", None),
+        ("002_森林溪流.jpg" if documentation else "002_手动编辑.png", "10:00:30", None),
         ("003_自动补全.png", "10:00:45", None),
         ("004_已有定位.png", "10:01:00", (-33.4, -70.1)),
         ("005_另一次拍摄.png", "12:00:00", None),
@@ -117,6 +117,9 @@ def fixtures(directory, oracle):
         path = directory / name
         if path.suffix == ".heic":
             source = ROOT / "tests/fixtures/heic/gradient.heic"
+            preserved_read(source, lambda: shutil.copyfile(source, path))
+        elif path.suffix == ".jpg":
+            source = ROOT / "tests/fixtures/gui/landscape.jpg"
             preserved_read(source, lambda: shutil.copyfile(source, path))
         else:
             pixels = bytes(value for y in range(96) for x in range(144)
@@ -345,6 +348,7 @@ def run(args):
         raise RuntimeError(f"Executable does not exist: {binary}")
     artifacts = Path(args.artifacts).resolve()
     artifacts.mkdir(parents=True, exist_ok=True)
+    screenshots = Path(args.screenshots).resolve() if args.screenshots else None
     xvfb_override = os.environ.get("PHOTOPINFIX_TEST_XVFB")
     xvfb = Path(xvfb_override).resolve() if xvfb_override else ROOT / "tools/gui-test/root/usr/bin/Xvfb"
     if not xvfb.exists() and not xvfb_override:
@@ -353,7 +357,9 @@ def run(args):
         raise RuntimeError("Run scripts/prepare_gui_test.sh first (local Xvfb is missing)")
     oracle = Oracle()
     xserver = application = x = None
-    with tempfile.TemporaryDirectory(prefix="photopinfix-gui-") as temporary:
+    # Documentation frames show only this disposable, generic directory. Do
+    # not expose a developer's home, checkout or personal photograph locations.
+    with tempfile.TemporaryDirectory(prefix="photopinfix-demo-" if screenshots else "photopinfix-gui-", dir="/tmp" if screenshots else None) as temporary:
         temp = Path(temporary)
         # Some agent sandboxes deny bind(2) even for a process's own Unix
         # sockets. Detect that before Xvfb -displayfd tries every display number.
@@ -363,9 +369,9 @@ def run(args):
         except OSError as error:
             raise RuntimeError("This execution sandbox cannot bind Unix sockets; run the developer GUI test in an authorized local host process. " + str(error)) from error
         (temp / "x11-socket-check").unlink()
-        photos = temp / "测试照片"
+        photos = temp / ("示例照片" if screenshots else "测试照片")
         photos.mkdir()
-        paths, original, expected_times = fixtures(photos, oracle)
+        paths, original, expected_times = fixtures(photos, oracle, documentation=bool(screenshots))
         runtime = temp / "standalone"
         runtime.mkdir()
         executable = runtime / "photopinfix"
@@ -400,7 +406,7 @@ def run(args):
             x.settled(artifacts / "gui-01-initial.png")
             print(f"Native GUI rendered with an empty PATH: {artifacts / 'gui-01-initial.png'}", flush=True)
             x.key("Down")
-            x.settled()
+            x.settled(artifacts / "gui-overview.png" if screenshots else None)
             x.key("e")
             x.settled(artifacts / "gui-02-editor.png")
             x.key("a", ("Control_L",))
@@ -454,6 +460,14 @@ def run(args):
             result = application.wait(timeout=20)
             assert result == 0, f"GUI exited with {result}"
             verify(oracle, paths, original, expected_times)
+            if screenshots:
+                # Export exact X11 window captures only after the full workflow
+                # and independent metadata checks pass. No cropping, retouching
+                # or synthetic UI is used for the documentation images.
+                screenshots.mkdir(parents=True, exist_ok=True)
+                for source, name in (("gui-overview.png", "overview.png"),
+                                     ("gui-04-editor-hemisphere.png", "gps-editor.png")):
+                    shutil.copyfile(artifacts / source, screenshots / name)
             report = {"executable": binary.name, "empty_path": True, "outside_checkout": True,
                       "native_window": True, "manual_and_auto_writes": True, "all_times_and_inode_preserved": True,
                       "birthtime_available": all(value["created_ns"] is not None for value in expected_times.values()),
@@ -506,6 +520,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", nargs="?", default=str(ROOT / "target/debug/photopinfix"))
     parser.add_argument("--artifacts", default=str(ROOT / "target/test-artifacts"))
+    parser.add_argument("--screenshots", metavar="DIRECTORY", help="Export verified, unmodified overview.png and gps-editor.png window captures for documentation")
     options = parser.parse_args()
     try:
         run(options)

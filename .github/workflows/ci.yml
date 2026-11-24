@@ -10,7 +10,7 @@ on:
         type: boolean
         default: true
       artifacts:
-        description: Upload development binaries with source and relinking materials
+        description: Upload application and separate source/relinking packages
         type: boolean
         default: true
 
@@ -180,7 +180,15 @@ jobs:
         if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: python scripts/check_gui.py ./target/${{ matrix.target }}/release/photopinfix
+        run: python scripts/check_gui.py ./target/${{ matrix.target }}/release/photopinfix --screenshots target/readme-screenshots
+      - name: Retain real desktop screenshots from this build
+        if: steps.gui.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: photopinfix-screenshots
+          path: target/readme-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 7
       - name: Retain desktop failure diagnostics
         if: failure() && steps.gui.outcome == 'failure'
         uses: actions/upload-artifact@v7
@@ -189,17 +197,33 @@ jobs:
           path: target/test-artifacts/gui-*
           if-no-files-found: warn
           retention-days: 7
-      - name: Prepare development artifact and verify native dependencies
+      - name: Verify package contents and matching source checksums
+        if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        run: python scripts/check_package.py
+      - name: Package application and corresponding source separately
         if: github.event_name != 'workflow_dispatch' || inputs.artifacts
         shell: bash
         run: bash scripts/package_release.sh '${{ matrix.target }}'
-      - uses: actions/upload-artifact@v7
+      # Make the corresponding source available before offering the app.
+      - name: Upload corresponding source and relinking materials
+        uses: actions/upload-artifact@v7
         if: github.event_name != 'workflow_dispatch' || inputs.artifacts
         with:
-          name: photopinfix-${{ matrix.target }}-development
+          name: photopinfix-${{ matrix.target }}-source
           path: |
-            target/artifacts/*.tar.gz
-            target/artifacts/*.sha256
+            target/artifacts/photopinfix-${{ matrix.target }}-source.tar.gz
+            target/artifacts/photopinfix-${{ matrix.target }}-source.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+      - name: Upload application for users
+        uses: actions/upload-artifact@v7
+        if: github.event_name != 'workflow_dispatch' || inputs.artifacts
+        with:
+          name: photopinfix-${{ matrix.target }}-app
+          path: |
+            target/artifacts/photopinfix-${{ matrix.target }}-app.tar.gz
+            target/artifacts/photopinfix-${{ matrix.target }}-app.tar.gz.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
