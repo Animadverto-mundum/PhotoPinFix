@@ -328,6 +328,28 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn non_utf8_display_keeps_original_path_after_enter() {
+        use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+        let path = PathBuf::from(OsString::from_vec(b"/photos/photo-\xff".to_vec()));
+        let picker = DirectoryPicker {
+            path_input: path.to_string_lossy().into_owned(),
+            directory: path.clone(),
+            directories: Vec::new(),
+            selected: None,
+            error: None,
+            readable: false,
+            home: None,
+            initial_focus: true,
+        };
+        assert!(picker.path_input.contains('\u{fffd}'));
+        assert_eq!(picker.entered_path().unwrap(), path);
+    }
+
+    // APFS requires valid UTF-8 when creating filenames. Exercise real invalid
+    // filename enumeration on Linux; the memory-only test above also runs on
+    // macOS and verifies that displaying a path never replaces its raw bytes.
+    #[cfg(target_os = "linux")]
+    #[test]
     fn non_utf8_folder_keeps_original_path_after_enter() {
         use std::{ffi::OsString, os::unix::ffi::OsStringExt};
         let temp = tempfile::tempdir().unwrap();
