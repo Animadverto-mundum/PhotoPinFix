@@ -12,7 +12,7 @@ pub enum Graphics {
 #[derive(Debug)]
 pub enum Action {
     Open {
-        directory: PathBuf,
+        directory: Option<PathBuf>,
         graphics: Graphics,
         gui: bool,
     },
@@ -68,7 +68,7 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> io::Result<Action
         }
     }
     Ok(Action::Open {
-        directory: directory.unwrap_or_else(|| PathBuf::from(".")),
+        directory,
         graphics,
         gui,
     })
@@ -78,9 +78,10 @@ pub fn print_help() {
     println!(
         "PhotoPinFix {} — 照片 GPS 补全\n\n\
 用法：photopinfix [--gui] [--graphics auto|halfblocks|sixel|kitty|iterm2] [目录]\n\
-默认打开终端 TUI；--gui 打开原生桌面窗口，需要图形桌面会话。\n\
-GUI 支持鼠标操作，Ctrl+L 输入目录，Ctrl+Q 退出；--graphics 仅用于 TUI。\n\
-默认处理当前目录；不递归扫描。RAW 与 JPEG/PNG/HEIF 同等处理。\n\n\
+默认打开终端 TUI；--gui 打开独立桌面窗口，启动后可关闭终端。\n\
+GUI 不指定目录时显示欢迎页，可在窗口中选择照片目录；需要图形桌面会话。\n\
+GUI 支持鼠标操作，Ctrl+L 选择目录，Ctrl+Q 退出；--graphics 仅用于 TUI。\n\
+TUI 不指定目录时处理当前目录；不递归扫描。RAW 与 JPEG/PNG/HEIF 同等处理。\n\n\
 TUI 快捷键：\n\
 ↑/↓ 或 j/k 选择文件   ←/→ 切换拍摄 session   a 当前 session/全部\n\
 Enter 确认写当前照片   Shift+Enter 或 W 确认写当前范围全部候选\n\
@@ -106,10 +107,18 @@ mod tests {
     }
 
     #[test]
-    fn default_opens_current_directory_in_terminal() {
+    fn omitted_directory_is_distinct_from_an_explicit_current_directory() {
         assert!(matches!(
             args(&[]).unwrap(),
-            Action::Open { directory, gui: false, graphics: Graphics::Auto }
+            Action::Open {
+                directory: None,
+                gui: false,
+                graphics: Graphics::Auto
+            }
+        ));
+        assert!(matches!(
+            args(&["."]).unwrap(),
+            Action::Open { directory: Some(directory), gui: false, .. }
                 if directory == Path::new(".")
         ));
     }
@@ -119,13 +128,17 @@ mod tests {
         for arguments in [["--gui", "中文 照片"], ["中文 照片", "--gui"]] {
             assert!(matches!(
                 args(&arguments).unwrap(),
-                Action::Open { directory, gui: true, .. }
+                Action::Open { directory: Some(directory), gui: true, .. }
                     if directory == Path::new("中文 照片")
             ));
         }
         assert!(matches!(
             args(&["--gui"]).unwrap(),
-            Action::Open { gui: true, .. }
+            Action::Open {
+                directory: None,
+                gui: true,
+                ..
+            }
         ));
     }
 
@@ -133,12 +146,12 @@ mod tests {
     fn double_dash_stops_option_parsing() {
         assert!(matches!(
             args(&["--", "--gui"]).unwrap(),
-            Action::Open { directory, gui: false, .. }
+            Action::Open { directory: Some(directory), gui: false, .. }
                 if directory == Path::new("--gui")
         ));
         assert!(matches!(
             args(&["--gui", "--", "-照片"]).unwrap(),
-            Action::Open { directory, gui: true, .. }
+            Action::Open { directory: Some(directory), gui: true, .. }
                 if directory == Path::new("-照片")
         ));
     }

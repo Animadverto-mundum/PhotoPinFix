@@ -23,22 +23,24 @@
 **Linux / macOS：**
 
 ```bash
-./photopinfix --gui "照片目录"
+./photopinfix --gui
 ```
 
 **Windows PowerShell：**
 
 ```powershell
-.\photopinfix.exe --gui "C:\Photos"
+.\photopinfix.exe --gui
 ```
 
-把路径换成自己的照片目录。去掉 `--gui` 就是终端界面；不传目录则打开当前目录。下载包不包含演示照片。
+打开后点击 **选择照片文件夹**。也可以直接指定目录，例如 `./photopinfix --gui "照片目录"`。窗口启动成功后，终端会返回命令提示符；关闭终端也能继续使用 GUI。
+
+去掉 `--gui` 就是终端界面；TUI 不传目录时打开当前目录。下载包不包含演示照片。
 
 GUI 需要图形桌面。Linux 使用 X11 / Wayland；Debian / Ubuntu 的 X11 环境如果提示缺少 `libxkbcommon-x11.so.0`，安装 `libxkbcommon-x11-0` 即可。通过 SSH 使用时可选择 TUI，它会自动检测终端图片协议，不支持时使用字符预览。
 
 ## 使用方法
 
-左侧选择照片，右上预览图片，右下查看位置。文件列表用颜色表示状态：
+宽窗口中，左侧是照片库，中间预览图片，右侧编辑坐标和查看地图；窄窗口通过页签切换预览与地图。文件列表用颜色表示状态：
 
 | 颜色 | 含义 |
 | --- | --- |
@@ -54,7 +56,21 @@ GUI 需要图形桌面。Linux 使用 X11 / Wayland；Debian / Ubuntu 的 X11 �
 
 编辑只暂存建议。按 **Enter** 写入当前照片，**Shift+Enter**（或 **W**）写入当前 session / 全部视图中的候选；两者都会再次确认。写入前保留 `.photopinfix-original` 备份，正常完成时保持照片的创建、修改和访问时间。已有 GPS 不会被覆盖。
 
-桌面界面可直接使用按钮。TUI 常用按键：
+桌面界面可直接使用按钮。
+
+## 终端界面
+
+不加 `--gui` 即可在终端使用：
+
+```bash
+./photopinfix "照片目录"
+```
+
+![PhotoPinFix 真实终端界面：照片文件列表、Sixel 图片预览和位置地图](docs/images/tui.png)
+
+终端会自动选择图片显示方式，定位策略和写入确认与桌面界面一致。
+
+TUI 常用按键：
 
 | 按键 | 功能 |
 | --- | --- |

@@ -106,13 +106,16 @@ PHOTOPINFIX_TEST_STANDALONE=1 python scripts/check_tui.py ./target/release/photo
 
 Linux 的原生 GUI 验收使用 `python scripts/check_gui.py ./target/release/photopinfix`。它在 Xvfb 中启动真实窗口，把可执行文件复制到项目外、清空运行 PATH，在新生成的照片上执行预览、编辑、确认、单张与批量写入，并核验文件时间和备份。测试截图位于 `target/test-artifacts/gui-*.png`；环境准备见 [scripts/GUI_TESTING.md](../scripts/GUI_TESTING.md)。这些桌面测试工具不属于应用运行依赖。
 
-更新 README 的两张实际窗口截图，可在本机构建完成后运行：
+更新 README 的实际窗口截图，可在本机构建完成后运行：
 
 ```bash
 python3 scripts/check_gui.py bin/photopinfix --screenshots docs/images
+python3 scripts/capture_tui.py bin/photopinfix --output docs/images/tui.png
 ```
 
-只有验收成功才导出 `overview.png` 和 `gps-editor.png`。使用公开风景测试图，拍摄日期与 GPS 均为模拟值；默认无底图，不依赖地图网络服务。CI 将截图写到 `target/readme-screenshots` 并作为 Artifact 上传，不自动修改仓库文档。
+GUI 只有验收成功才导出 `overview.png` 和 `gps-editor.png`。TUI 截图工具在私有 Xvfb 中启动真实 xterm 和应用，通过实际键盘选择照片，再直接抓取窗口像素生成 `tui.png`；它不把 pyte 单元格重新绘制成图片。默认使用 Sixel，可用 `--graphics halfblocks` 验证字符预览。需要开发环境安装 `xterm`、`fonts-dejavu-core`、`pyte` 和 util-linux 的 `script`；中文字体从仓库加载，临时字体缓存随测试清理，不修改系统字体设置。应用自身仍以空 PATH 运行，退出后核验所有样本的字节和文件时间保持不变。
+
+使用公开风景测试图，拍摄日期与 GPS 均为模拟值；默认无底图，不依赖地图网络服务。截图只显示通用临时目录。CI 将三张截图写到 `target/readme-screenshots` 并作为 Artifact 上传，不自动修改仓库文档。这些截图工具属于开发依赖，不随应用运行。
 
 ## 界面与高级操作
 
@@ -128,7 +131,9 @@ TUI 若未正确识别终端图像协议，使用 `--graphics halfblocks`；也�
 
 ### 桌面 GUI
 
-使用鼠标选择照片、切换 session / 全部范围、修改设置与编辑坐标。`Ctrl+L` 打开目录输入，`Ctrl+Q` 退出。GUI 的快捷键以界面提示为准，下面的完整按键表用于 TUI。
+`--gui` 默认启动独立桌面进程，窗口打开后终端返回，关闭终端不会关闭 GUI。不传目录显示欢迎页，通过“选择照片文件夹”或 `Ctrl+O` 浏览目录；也可以在命令行直接传目录。目录选择器内置于程序，不要求外部文件选择工具。
+
+使用鼠标选择照片、切换 session / 全部范围、修改设置与编辑坐标。`Ctrl+L` 打开目录输入，`Ctrl+O` 选择文件夹，`Ctrl+Q` 退出（macOS 使用 Command）。GUI 的快捷键以界面提示为准，下面的完整按键表用于 TUI。
 
 GUI 中 `Enter` 写当前照片，`Shift+Enter` / `W` 写当前范围。写入确认框默认取消，按 `Y` 或点击“确认写入”才执行；编辑框的 `Enter` 只暂存候选。坐标编辑支持 `F2` 切换小数 / 度分秒、`F3` 切换正负号 / 方位字母。关闭窗口、换目录或重扫前，如有未写入的手动候选，会询问是否丢弃。macOS 上目录与退出快捷键使用 Command。
 

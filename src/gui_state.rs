@@ -67,6 +67,13 @@ pub struct GuiState {
 }
 
 impl GuiState {
+    /// Prepare an empty desktop without scanning until a folder is chosen.
+    pub fn idle(directory: PathBuf, tool: MetadataTool) -> Self {
+        let mut state = Self::empty(directory, IoWorker::new(tool));
+        state.status = "选择照片文件夹开始".into();
+        state
+    }
+
     pub fn new(directory: PathBuf, tool: MetadataTool) -> Self {
         let mut state = Self::empty(directory, IoWorker::new(tool));
         state.start_scan();

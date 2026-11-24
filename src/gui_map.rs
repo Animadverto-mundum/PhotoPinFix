@@ -14,13 +14,18 @@ use std::{
 };
 
 use eframe::egui::{
-    self, Align2, Color32, ColorImage, FontId, Pos2, Rect, Sense, Stroke, TextureHandle,
+    self, Align2, Color32, ColorImage, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureHandle,
     TextureOptions, Vec2,
 };
 use photopinfix::map::{self, MapPoint, MapRenderer, MapScale, MapView};
 
 const SCALE_CELL_POINTS: f32 = 8.0;
-const MAP_COLOR: Color32 = Color32::from_rgb(18, 24, 34);
+const MAP_COLOR: Color32 = Color32::from_rgb(241, 246, 242);
+const INK: Color32 = Color32::from_rgb(32, 44, 50);
+const MUTED: Color32 = Color32::from_rgb(111, 126, 121);
+const TEAL: Color32 = Color32::from_rgb(23, 122, 105);
+const AMBER: Color32 = Color32::from_rgb(183, 124, 35);
+const GRID: Color32 = Color32::from_rgb(222, 232, 225);
 
 struct RenderRequest {
     generation: u64,
@@ -165,35 +170,58 @@ impl GuiMap {
             self.view = MapView::fit(points);
             self.fitted = true;
         }
-        ui.horizontal_wrapped(|ui| {
-            ui.strong("地图");
-            ui.selectable_value(&mut self.background, false, "无底图");
-            ui.selectable_value(&mut self.background, true, "图片底图");
-            if self.background {
-                egui::ComboBox::from_id_salt("photopinfix-map-source")
-                    .width(180.0)
-                    .selected_text(&self.sources[self.source])
-                    .show_ui(ui, |ui| {
-                        for (index, source) in self.sources.iter().enumerate() {
-                            ui.selectable_value(&mut self.source, index, source);
-                        }
-                    });
-            }
-            if ui.button("−").on_hover_text("缩小").clicked() {
-                self.view.zoom_by(-1.0);
-            }
-            if ui.button("＋").on_hover_text("放大").clicked() {
-                self.view.zoom_by(1.0);
-            }
-            if ui.button("适配全部点").clicked() {
-                self.view = MapView::fit(points);
-            }
+        ui.scope(|ui| {
+            ui.spacing_mut().button_padding = Vec2::new(7.0, 3.0);
+            ui.spacing_mut().item_spacing = Vec2::new(5.0, 6.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("位置分布").size(14.0).strong().color(INK));
+                ui.label(
+                    RichText::new(points.len().to_string())
+                        .size(11.0)
+                        .color(MUTED),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if mode_button(ui, "底图", self.background).clicked() {
+                        self.background = true;
+                    }
+                    if mode_button(ui, "点位", !self.background).clicked() {
+                        self.background = false;
+                    }
+                });
+            });
+            ui.horizontal(|ui| {
+                if ui.small_button("−").on_hover_text("缩小").clicked() {
+                    self.view.zoom_by(-1.0);
+                }
+                if ui.small_button("＋").on_hover_text("放大").clicked() {
+                    self.view.zoom_by(1.0);
+                }
+                if ui
+                    .small_button("适配")
+                    .on_hover_text("显示全部位置")
+                    .clicked()
+                {
+                    self.view = MapView::fit(points);
+                }
+                if self.background {
+                    egui::ComboBox::from_id_salt("photopinfix-map-source")
+                        .width(ui.available_width().max(60.0))
+                        .selected_text(RichText::new(&self.sources[self.source]).size(11.0))
+                        .show_ui(ui, |ui| {
+                            for (index, source) in self.sources.iter().enumerate() {
+                                ui.selectable_value(&mut self.source, index, source);
+                            }
+                        });
+                } else {
+                    ui.label(RichText::new("无底图 · 参考网格").size(11.0).color(MUTED));
+                }
+            });
         });
 
         let available = ui.available_size();
         // Leave room for one status line. Attribution is painted, wrapping as
         // needed, inside the map and remains visible while a new view loads.
-        let size = Vec2::new(available.x.max(1.0), (available.y - 24.0).max(1.0));
+        let size = Vec2::new(available.x.max(1.0), (available.y - 22.0).max(1.0));
         let (rect, response) = ui.allocate_exact_size(size, Sense::drag());
         let render_size = image_size(size, ui.ctx().pixels_per_point());
         if response.dragged() {
@@ -219,51 +247,77 @@ impl GuiMap {
                 zoom_at(&mut self.view, delta, anchor, size, render_size);
             }
         }
-        self.submit_if_changed(ui.ctx(), points, render_size, size.x);
-
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 4.0, MAP_COLOR);
-        if let Some(texture) = &self.texture {
-            painter.image(
-                texture.id(),
-                rect,
-                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                Color32::WHITE,
-            );
+        painter.rect_filled(rect, 7.0, MAP_COLOR);
+        if self.background {
+            self.submit_if_changed(ui.ctx(), points, render_size, size.x);
+            if let Some(texture) = &self.texture {
+                painter.image(
+                    texture.id(),
+                    rect,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+                paint_overlays(
+                    &painter,
+                    rect,
+                    self.scale.as_ref(),
+                    self.scale_fraction,
+                    &self.attribution,
+                );
+            } else {
+                // Locations remain usable while the first tile request loads.
+                paint_offline_map(&painter, rect, &self.view, points, render_size);
+            }
         } else {
-            painter.text(
-                rect.center(),
-                Align2::CENTER_CENTER,
-                "正在绘制地图…",
-                FontId::proportional(14.0),
-                Color32::LIGHT_GRAY,
-            );
+            self.cancel_online_view();
+            paint_offline_map(&painter, rect, &self.view, points, render_size);
         }
         if points.is_empty() {
             painter.text(
                 rect.center(),
                 Align2::CENTER_CENTER,
-                "当前范围没有可显示的 GPS 位置",
-                FontId::proportional(14.0),
-                Color32::LIGHT_GRAY,
+                "当前范围暂无 GPS 位置",
+                FontId::proportional(13.0),
+                MUTED,
             );
         }
-        paint_overlays(
-            &painter,
-            rect,
-            self.scale.as_ref(),
-            self.scale_fraction,
-            &self.attribution,
-        );
+        painter.rect_stroke(rect, 7.0, Stroke::new(1.0, GRID), egui::StrokeKind::Inside);
         response
             .on_hover_text("滚轮缩放 · 拖动平移 · 绿色为已有 GPS，黄色为待补全 · 大点为当前照片");
-        let status = if self.loading {
-            format!("更新中… · {}", self.status)
+        let status = if !self.background {
+            "拖动平移 · 滚轮缩放".to_owned()
+        } else if self.loading {
+            "正在加载底图…".to_owned()
         } else {
             self.status.clone()
         };
-        ui.add(egui::Label::new(&status).truncate())
+        ui.add(egui::Label::new(RichText::new(&status).size(11.0).color(MUTED)).truncate())
             .on_hover_text(status);
+    }
+
+    /// Offline markers are drawn directly, without an image worker or network.
+    /// Invalidate any online response before it can replace this new view.
+    fn cancel_online_view(&mut self) {
+        if self.requested_key.take().is_none() {
+            return;
+        }
+        if let Some(cancel) = self.cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.generation = self.generation.wrapping_add(1);
+        self.request
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        self.response
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .take();
+        self.texture = None;
+        self.scale = None;
+        self.attribution.clear();
+        self.loading = false;
     }
 
     fn receive(&mut self, context: &egui::Context) {
@@ -430,6 +484,135 @@ fn request_key(
     state.finish()
 }
 
+fn mode_button(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
+    ui.add(
+        egui::Button::new(RichText::new(label).size(11.0).color(if selected {
+            TEAL
+        } else {
+            MUTED
+        }))
+        .fill(if selected {
+            Color32::from_rgb(225, 241, 234)
+        } else {
+            Color32::TRANSPARENT
+        })
+        .stroke(Stroke::NONE)
+        .corner_radius(5.0),
+    )
+}
+
+fn paint_offline_map(
+    painter: &egui::Painter,
+    rect: Rect,
+    view: &MapView,
+    points: &[MapPoint],
+    size: [u32; 2],
+) {
+    paint_reference_grid(painter, rect, view, size);
+    // Draw the selected photo last so coincident positions remain visible.
+    for selected in [false, true] {
+        for point in points.iter().filter(|point| point.selected == selected) {
+            let (x, y) = view.pixel_position(point.coordinates, size[0], size[1]);
+            let position = rect.min
+                + Vec2::new(
+                    (x / f64::from(size[0])) as f32 * rect.width(),
+                    (y / f64::from(size[1])) as f32 * rect.height(),
+                );
+            if !rect.expand(16.0).contains(position) {
+                continue;
+            }
+            let color = if point.existing { TEAL } else { AMBER };
+            if selected {
+                painter.circle_filled(position, 14.0, color.gamma_multiply(0.13));
+                painter.circle_filled(position, 8.0, Color32::WHITE);
+                painter.circle_filled(position, 5.5, color);
+            } else {
+                painter.circle_filled(position, 5.0, Color32::WHITE);
+                painter.circle_filled(position, 3.25, color);
+            }
+        }
+    }
+
+    if rect.width() > 180.0 && rect.height() > 100.0 {
+        let legend = Rect::from_min_size(rect.min + Vec2::splat(10.0), Vec2::new(129.0, 23.0));
+        painter.rect_filled(legend, 5.0, Color32::from_white_alpha(230));
+        for (x, color, label) in [(10.0, TEAL, "已有 GPS"), (79.0, AMBER, "待写入")] {
+            let center = legend.min + Vec2::new(x, 11.5);
+            painter.circle_filled(center, 3.0, color);
+            painter.text(
+                center + Vec2::new(7.0, 0.0),
+                Align2::LEFT_CENTER,
+                label,
+                FontId::proportional(10.0),
+                MUTED,
+            );
+        }
+        painter.text(
+            Pos2::new(rect.right() - 17.0, rect.top() + 14.0),
+            Align2::CENTER_TOP,
+            "N",
+            FontId::proportional(10.0),
+            MUTED,
+        );
+        let tip = Pos2::new(rect.right() - 17.0, rect.top() + 31.0);
+        painter.line_segment([tip, tip + Vec2::new(0.0, 9.0)], Stroke::new(1.0, MUTED));
+        painter.line_segment([tip, tip + Vec2::new(-3.0, 4.0)], Stroke::new(1.0, MUTED));
+        painter.line_segment([tip, tip + Vec2::new(3.0, 4.0)], Stroke::new(1.0, MUTED));
+    }
+    let columns = (rect.width() / SCALE_CELL_POINTS)
+        .floor()
+        .clamp(1.0, f32::from(u16::MAX)) as u16;
+    let scale = view.scale(size[0], size[1], columns);
+    let fraction = scale
+        .as_ref()
+        .map_or(0.0, |scale| f32::from(scale.cells) / f32::from(columns));
+    paint_overlays(painter, rect, scale.as_ref(), fraction, "");
+}
+
+/// A reference grid in the same projected coordinates as the markers. Lines
+/// stay anchored to the world while panning; they do not suggest roads/routes.
+fn paint_reference_grid(painter: &egui::Painter, rect: Rect, view: &MapView, size: [u32; 2]) {
+    let units = units_per_pixel(view, size);
+    let target = units * f64::from(size[0]) * 64.0 / f64::from(rect.width().max(1.0));
+    let magnitude = 10.0_f64.powf(target.log10().floor());
+    let multiple = target / magnitude;
+    let step = magnitude
+        * if multiple <= 1.0 {
+            1.0
+        } else if multiple <= 2.0 {
+            2.0
+        } else if multiple <= 5.0 {
+            5.0
+        } else {
+            10.0
+        };
+    let span_x = f64::from(size[0]) * units;
+    let span_y = f64::from(size[1]) * units;
+    for (center, span, horizontal) in [
+        (view.center_x, span_x, false),
+        (view.center_y, span_y, true),
+    ] {
+        let start = center - span / 2.0;
+        let first = (start / step).ceil();
+        let count = ((span / step).ceil() as usize).min(64);
+        for offset in 0..=count {
+            let world = (first + offset as f64) * step;
+            let fraction = ((world - start) / span) as f32;
+            if !(0.0..=1.0).contains(&fraction) || (horizontal && !(0.0..=1.0).contains(&world)) {
+                continue;
+            }
+            let line = if horizontal {
+                let y = rect.top() + fraction * rect.height();
+                [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)]
+            } else {
+                let x = rect.left() + fraction * rect.width();
+                [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())]
+            };
+            painter.line_segment(line, Stroke::new(0.75, GRID));
+        }
+    }
+}
+
 fn paint_overlays(
     painter: &egui::Painter,
     rect: Rect,
@@ -442,32 +625,28 @@ fn paint_overlays(
         let galley = painter.layout(
             attribution.to_owned(),
             FontId::proportional(11.0),
-            Color32::WHITE,
+            INK,
             (rect.width() - 18.0).max(1.0),
         );
         let pos = Pos2::new(rect.left() + 9.0, bottom - galley.size().y);
         painter.rect_filled(
             Rect::from_min_size(pos - Vec2::splat(3.0), galley.size() + Vec2::splat(6.0)),
-            2.0,
-            Color32::from_black_alpha(205),
+            4.0,
+            Color32::from_white_alpha(238),
         );
-        painter.galley(pos, galley, Color32::WHITE);
+        painter.galley(pos, galley, INK);
         bottom = pos.y - 12.0;
     }
     if let Some(scale) = scale {
         let width = rect.width() * scale_fraction;
         let start = Pos2::new(rect.left() + 12.0, bottom - 5.0);
-        let label = painter.layout_no_wrap(
-            scale.label.clone(),
-            FontId::proportional(12.0),
-            Color32::WHITE,
-        );
+        let label = painter.layout_no_wrap(scale.label.clone(), FontId::proportional(11.0), INK);
         let bg = Rect::from_min_max(
             Pos2::new(start.x - 5.0, start.y - label.size().y - 12.0),
             Pos2::new(start.x + width.max(label.size().x) + 5.0, start.y + 9.0),
         );
-        painter.rect_filled(bg, 2.0, Color32::from_black_alpha(205));
-        let stroke = Stroke::new(1.5, Color32::WHITE);
+        painter.rect_filled(bg, 5.0, Color32::from_white_alpha(238));
+        let stroke = Stroke::new(1.5, TEAL);
         painter.line_segment([start, start + Vec2::new(width, 0.0)], stroke);
         for x in [start.x, start.x + width] {
             painter.line_segment(
@@ -478,7 +657,7 @@ fn paint_overlays(
         painter.galley(
             Pos2::new(start.x, start.y - label.size().y - 6.0),
             label,
-            Color32::WHITE,
+            INK,
         );
     }
 }
@@ -555,5 +734,48 @@ mod tests {
             key,
             request_key(&points, &view, [600, 400], 600.0, false, 0)
         );
+    }
+
+    #[test]
+    fn offline_mode_cancels_online_work_and_rejects_late_images() {
+        let context = egui::Context::default();
+        let mut map = GuiMap::new(&context);
+        let cancel = Arc::new(AtomicBool::new(false));
+        map.generation = 7;
+        map.requested_key = Some(42);
+        map.loading = true;
+        map.cancel = Some(Arc::clone(&cancel));
+        *map.request.lock().unwrap() = Some(RenderRequest {
+            generation: 7,
+            points: vec![point(1.0, 2.0)],
+            view: MapView::default(),
+            size: [300, 200],
+            display_width: 300.0,
+            background: true,
+            source: 0,
+            cancel: Arc::clone(&cancel),
+        });
+        map.cancel_online_view();
+        assert!(cancel.load(Ordering::Relaxed));
+        assert!(map.request.lock().unwrap().is_none());
+        assert!(map.requested_key.is_none());
+        assert!(!map.loading);
+
+        // A worker may already have passed its final cancellation check when
+        // the mode changes. Its old generation still must not be displayed.
+        *map.response.lock().unwrap() = Some(RenderResponse {
+            generation: 7,
+            image: ColorImage::from_rgba_unmultiplied([1, 1], &[0, 0, 0, 255]),
+            status: "stale online image".into(),
+            attribution: "stale attribution".into(),
+            scale: None,
+            scale_fraction: 0.0,
+        });
+        map.receive(&context);
+        assert!(map.texture.is_none());
+        assert!(map.attribution.is_empty());
+        let generation = map.generation;
+        map.cancel_online_view();
+        assert_eq!(map.generation, generation);
     }
 }

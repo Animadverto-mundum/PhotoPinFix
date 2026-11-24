@@ -180,6 +180,7 @@ class X11:
             "XKeysymToKeycode": ([C.c_void_p, C.c_ulong], C.c_ubyte),
             "XFlush": ([C.c_void_p], C.c_int),
             "XResizeWindow": ([C.c_void_p, C.c_ulong, C.c_uint, C.c_uint], C.c_int),
+            "XTranslateCoordinates": ([C.c_void_p, C.c_ulong, C.c_ulong, C.c_int, C.c_int, C.POINTER(C.c_int), C.POINTER(C.c_int), C.POINTER(C.c_ulong)], C.c_int),
             "XGetImage": ([C.c_void_p, C.c_ulong, C.c_int, C.c_int, C.c_uint, C.c_uint, C.c_ulong, C.c_int], C.POINTER(XImage)),
             "XDestroyImage": ([C.POINTER(XImage)], C.c_int),
             "XCloseDisplay": ([C.c_void_p], C.c_int),
@@ -189,6 +190,10 @@ class X11:
             fn.argtypes, fn.restype = args, result
         self.xtest.XTestFakeKeyEvent.argtypes = [C.c_void_p, C.c_uint, C.c_int, C.c_ulong]
         self.xtest.XTestFakeKeyEvent.restype = C.c_int
+        self.xtest.XTestFakeMotionEvent.argtypes = [C.c_void_p, C.c_int, C.c_int, C.c_int, C.c_ulong]
+        self.xtest.XTestFakeMotionEvent.restype = C.c_int
+        self.xtest.XTestFakeButtonEvent.argtypes = [C.c_void_p, C.c_uint, C.c_int, C.c_ulong]
+        self.xtest.XTestFakeButtonEvent.restype = C.c_int
         self.display = self.lib.XOpenDisplay(display_name.encode())
         if not self.display:
             raise RuntimeError(f"XOpenDisplay failed: {display_name}")
@@ -267,6 +272,17 @@ class X11:
     def text(self, value):
         for char in value:
             self.key({"-": "minus", ".": "period"}.get(char, char))
+
+    def click(self, x, y):
+        root_x, root_y, child = C.c_int(), C.c_int(), C.c_ulong()
+        if not self.lib.XTranslateCoordinates(self.display, self.window, self.root, x, y,
+                                             C.byref(root_x), C.byref(root_y), C.byref(child)):
+            raise RuntimeError("Could not translate window coordinates")
+        self.xtest.XTestFakeMotionEvent(self.display, -1, root_x.value, root_y.value, 0)
+        self.xtest.XTestFakeButtonEvent(self.display, 1, 1, 0)
+        self.xtest.XTestFakeButtonEvent(self.display, 1, 0, 0)
+        self.lib.XFlush(self.display)
+        self.events(0.06)
 
     def frame(self):
         attrs = self.attributes()
@@ -398,7 +414,10 @@ def run(args):
                 env.pop(key, None)
             env.update(DISPLAY=display, XDG_SESSION_TYPE="x11", WINIT_UNIX_BACKEND="x11", LIBGL_ALWAYS_SOFTWARE="1",
                        __GLX_VENDOR_LIBRARY_NAME="mesa", PATH=str(empty_path), PHOTOPINFIX_PYTHON="/nonexistent/python",
-                       PHOTOPINFIX_EXIFTOOL="/nonexistent/exiftool")
+                       PHOTOPINFIX_EXIFTOOL="/nonexistent/exiftool", PHOTOPINFIX_GUI_FOREGROUND="1")
+            # Keep the real window process observable for write/exit cleanup.
+            # check_gui_launch.py separately verifies the public detached launch.
+            env.pop("PHOTOPINFIX_GUI_CHILD", None)
             application = subprocess.Popen([str(executable), "--gui", str(photos)], cwd=runtime, env=env,
                                            stdout=logs[1], stderr=logs[2])
             x.process = application
@@ -406,6 +425,20 @@ def run(args):
             x.settled(artifacts / "gui-01-initial.png")
             print(f"Native GUI rendered with an empty PATH: {artifacts / 'gui-01-initial.png'}", flush=True)
             x.key("Down")
+            if screenshots:
+                # A quiet loading placeholder is also a stable frame. For the
+                # documentation landscape, require actual photographic detail
+                # in the middle of the wide preview before taking the picture.
+                def landscape_rendered():
+                    width, height, pixels = x.frame()
+                    colors = {
+                        pixels[(row * width + column) * 3:(row * width + column) * 3 + 3]
+                        for row in range(int(height * 0.35), int(height * 0.65), 4)
+                        for column in range(int(width * 0.35), int(width * 0.68), 4)
+                    }
+                    return len(colors) > 1500
+
+                x.wait(landscape_rendered, "landscape pixels replace the loading placeholder", timeout=30)
             x.settled(artifacts / "gui-overview.png" if screenshots else None)
             x.key("e")
             x.settled(artifacts / "gui-02-editor.png")
@@ -455,8 +488,33 @@ def run(args):
             x.lib.XFlush(x.display)
             x.wait(lambda: (x.attributes().width, x.attributes().height) == (880, 640), "minimum-size viewport")
             x.settled(artifacts / "gui-12-minimum-880x640.png")
-            x.key("q", ("Control_L",))
+            # Compact-layout tabs must be reachable by mouse as well as the
+            # keyboard workflows tested above. These points are client pixels
+            # in the fixed 880x640, 1x-DPI test viewport.
+            x.click(425, 188)
+            x.settled(artifacts / "gui-12b-minimum-map.png")
+            x.click(336, 188)
+            x.settled()
+            # The fifth photo still has no GPS. Check the entire coordinate
+            # form at the minimum window size without writing or staging it.
+            for _ in range(4):
+                x.key("Down")
+            x.key("e")
+            x.settled()
+            x.key("a", ("Control_L",))
+            x.text("31.2")
+            x.key("Tab")
+            x.key("a", ("Control_L",))
+            x.text("121.4")
+            x.settled(artifacts / "gui-13-minimum-editor.png")
+            x.key("Escape")
+            x.settled()
+            x.lib.XResizeWindow(x.display, x.window, 1440, 640)
+            x.lib.XFlush(x.display)
+            x.wait(lambda: (x.attributes().width, x.attributes().height) == (1440, 640), "wide short viewport")
+            x.settled(artifacts / "gui-14-wide-short.png")
             x.process = None
+            x.key("q", ("Control_L",))
             result = application.wait(timeout=20)
             assert result == 0, f"GUI exited with {result}"
             verify(oracle, paths, original, expected_times)

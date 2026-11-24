@@ -1,4 +1,4 @@
-# GUI screenshot photograph
+# GUI and TUI screenshot photograph
 
 `landscape.jpg` is a 960 × 640 photograph by **Paul Jarvis**, downloaded through
 [Lorem Picsum, image 11](https://picsum.photos/id/11/960/640).
@@ -12,4 +12,5 @@ The screenshot workflow copies this image to a temporary directory before
 adding simulated capture times and GPS. These values do not describe the
 photograph's real location or capture time. The source fixture is never written
 by the application. All screenshots are unmodified captures of the actual
-PhotoPinFix desktop window, produced by `scripts/check_gui.py --screenshots`.
+PhotoPinFix desktop or terminal window, produced by
+`scripts/check_gui.py --screenshots` or `scripts/capture_tui.py`.

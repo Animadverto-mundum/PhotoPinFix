@@ -25,6 +25,8 @@ After building the executable, run:
 python3 scripts/check_gui.py target/debug/photopinfix
 # The same test can validate the standalone release executable:
 python3 scripts/check_gui.py target/release/photopinfix --artifacts target/gui-release-check
+# Verify the public --gui launcher and welcome-folder flow separately:
+python3 scripts/check_gui_launch.py target/release/photopinfix --artifacts target/gui-launch-check
 ```
 
 The test uses Python's standard library and ctypes bindings to X11/XTest, starts
@@ -35,6 +37,25 @@ preview, coordinate editing, decimal/DMS and signed/hemisphere conversion,
 current-photo confirmation and cancellation, batch writes, sessions, settings,
 and the minimum 880 × 640 viewport. Screenshots, application logs and a JSON
 report are saved under `target/test-artifacts` by default.
+
+`check_gui.py` sets the internal `PHOTOPINFIX_GUI_FOREGROUND=1` switch so the
+harness can observe the actual window process and its exit status. Normal
+`photopinfix --gui` usage does not need this switch: its launcher returns after
+the detached window reports that it is ready.
+
+`check_gui_launch.py` exercises that normal launch with no directory argument.
+It creates a real controlling PTY, requires the launcher to exit successfully,
+then closes the PTY before interacting with the detached window. It checks that
+the window has its own Unix session and no controlling terminal, displays the
+welcome page even when its working directory contains an image, and remains
+usable after the terminal closes. The test clicks the welcome action, types a
+folder path containing Chinese characters and spaces, confirms the built-in
+folder picker with the mouse, and waits for actual photo pixels. It then closes
+the window and verifies an observed successful exit plus unchanged photo bytes,
+file times and identity. Its `gui-launch-*.png`, launcher/Xvfb logs and
+`gui-launch-report.json` describe this separate acceptance result. No desktop
+file chooser program, clipboard utility or shell command is available on the
+application's empty PATH.
 
 Writing a photo keeps the other reviewed candidates unchanged, matching the
 TUI; each confirmed batch uses the exact candidates shown in its confirmation
@@ -51,6 +72,11 @@ application has gracefully exited and joined its I/O worker. This avoids races
 between the independent oracle and application access-time guards.
 
 A successful test establishes this Linux/X11 configuration; native Windows and
-macOS UI behavior still requires their corresponding runners. Test screenshots
+macOS detached-launch and UI behavior still require acceptance on those
+platforms. The PTY/session assertions are Linux-specific and are not evidence
+that Windows process flags or macOS terminal closing have been exercised.
+Linux CI runs both scripts and retains `gui-launch-*` diagnostics if the launch
+acceptance fails; existing desktop/TUI screenshot artifacts remain separate.
+Test screenshots
 and logs are local development artifacts and should not be committed or shared
 without checking that displayed paths contain no personal information.

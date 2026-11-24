@@ -9,16 +9,59 @@ use photopinfix::{
 };
 
 use crate::{
+    gui_directory::DirectoryPicker,
     gui_map::GuiMap,
     gui_state::{GuiState, WriteSnapshot},
 };
 
-const GREEN: Color32 = Color32::from_rgb(111, 212, 159);
-const YELLOW: Color32 = Color32::from_rgb(242, 199, 103);
-const RED: Color32 = Color32::from_rgb(246, 138, 138);
-const MUTED: Color32 = Color32::from_rgb(154, 169, 190);
+const GREEN: Color32 = Color32::from_rgb(30, 116, 91);
+const YELLOW: Color32 = Color32::from_rgb(162, 106, 27);
+const RED: Color32 = Color32::from_rgb(187, 77, 67);
+const MUTED: Color32 = Color32::from_rgb(112, 128, 122);
+const INK: Color32 = Color32::from_rgb(35, 51, 45);
+const CANVAS: Color32 = Color32::from_rgb(243, 245, 241);
+const LINE: Color32 = Color32::from_rgb(225, 232, 226);
+const TINT: Color32 = Color32::from_rgb(230, 241, 233);
 
-pub fn run(directory: PathBuf, tool: MetadataTool) -> Result<(), Box<dyn Error>> {
+fn primary(label: impl Into<egui::WidgetText>) -> egui::Button<'static> {
+    egui::Button::new(label)
+        .fill(GREEN)
+        .stroke(egui::Stroke::NONE)
+        .min_size(Vec2::new(100.0, 38.0))
+        .corner_radius(8)
+}
+
+fn badge(ui: &mut egui::Ui, text: impl Into<String>, color: Color32) {
+    egui::Frame::NONE
+        .fill(color.gamma_multiply(0.09))
+        .corner_radius(5)
+        .inner_margin(egui::Margin::symmetric(8, 4))
+        .show(ui, |ui| {
+            ui.label(RichText::new(text).color(color).size(12.0));
+        });
+}
+
+fn card(ui: &mut egui::Ui, rect: egui::Rect, content: impl FnOnce(&mut egui::Ui)) {
+    ui.painter().rect_filled(
+        rect.translate(egui::vec2(0.0, 2.0)),
+        12.0,
+        Color32::from_black_alpha(5),
+    );
+    ui.painter().rect_filled(rect, 12.0, Color32::WHITE);
+    ui.painter().rect_stroke(
+        rect,
+        12.0,
+        egui::Stroke::new(1.0, LINE),
+        egui::StrokeKind::Inside,
+    );
+    let inner = rect.shrink(16.0);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
+        ui.shrink_clip_rect(inner);
+        content(ui);
+    });
+}
+
+pub fn run(directory: Option<PathBuf>, tool: MetadataTool) -> Result<(), Box<dyn Error>> {
     #[cfg(target_os = "linux")]
     if std::env::var_os("DISPLAY").is_none() && std::env::var_os("WAYLAND_DISPLAY").is_none() {
         return Err("GUI 需要桌面图形会话（X11 / Wayland）。请在桌面终端运行 --gui；当前 SSH 会话可不加 --gui 使用 TUI。".into());
@@ -36,7 +79,9 @@ pub fn run(directory: PathBuf, tool: MetadataTool) -> Result<(), Box<dyn Error>>
         options,
         Box::new(move |cc| {
             configure(&cc.egui_ctx);
-            Ok(Box::new(Desktop::new(&cc.egui_ctx, directory, tool)))
+            let desktop = Desktop::new(&cc.egui_ctx, directory, tool);
+            crate::gui_launch::ready()?;
+            Ok(Box::new(desktop))
         }),
     )
     .map_err(|error| format!("无法打开桌面窗口：{error}"))?;
@@ -58,22 +103,54 @@ fn configure(ctx: &egui::Context) {
             .push("noto-sc".into());
     }
     ctx.set_fonts(fonts);
-    ctx.set_theme(egui::ThemePreference::Dark);
-    let mut style = (*ctx.style_of(egui::Theme::Dark)).clone();
-    style.visuals = egui::Visuals::dark();
-    style.visuals.panel_fill = Color32::from_rgb(18, 24, 34);
-    style.visuals.window_fill = Color32::from_rgb(25, 33, 46);
-    style.visuals.selection.bg_fill = Color32::from_rgb(43, 72, 86);
+    ctx.set_theme(egui::ThemePreference::Light);
+    let mut style = (*ctx.style_of(egui::Theme::Light)).clone();
+    style.visuals = egui::Visuals::light();
+    style.visuals.override_text_color = Some(INK);
+    style.visuals.panel_fill = CANVAS;
+    style.visuals.window_fill = Color32::WHITE;
+    style.visuals.extreme_bg_color = Color32::WHITE;
+    style.visuals.faint_bg_color = CANVAS;
+    style.visuals.text_edit_bg_color = Some(Color32::WHITE);
+    style.visuals.selection.bg_fill = TINT;
     style.visuals.selection.stroke = egui::Stroke::new(1.0, GREEN);
-    style.spacing.item_spacing = Vec2::new(10.0, 8.0);
-    style.spacing.button_padding = Vec2::new(12.0, 7.0);
-    style
-        .text_styles
-        .insert(egui::TextStyle::Body, egui::FontId::proportional(15.0));
-    style
-        .text_styles
-        .insert(egui::TextStyle::Button, egui::FontId::proportional(15.0));
-    ctx.set_style_of(egui::Theme::Dark, style);
+    style.visuals.window_corner_radius = egui::CornerRadius::same(16);
+    style.visuals.window_stroke = egui::Stroke::new(1.0, LINE);
+    style.visuals.window_shadow = egui::epaint::Shadow {
+        offset: [0, 12],
+        blur: 40,
+        spread: 2,
+        color: Color32::from_black_alpha(28),
+    };
+    for visual in [
+        &mut style.visuals.widgets.inactive,
+        &mut style.visuals.widgets.hovered,
+        &mut style.visuals.widgets.active,
+        &mut style.visuals.widgets.noninteractive,
+    ] {
+        visual.corner_radius = egui::CornerRadius::same(7);
+        visual.bg_stroke = egui::Stroke::new(1.0, LINE);
+        visual.fg_stroke = egui::Stroke::new(1.0, INK);
+    }
+    style.visuals.widgets.inactive.weak_bg_fill = Color32::WHITE;
+    style.visuals.widgets.inactive.bg_fill = CANVAS;
+    style.visuals.widgets.hovered.weak_bg_fill = TINT;
+    style.visuals.widgets.hovered.bg_fill = TINT;
+    style.visuals.widgets.active.weak_bg_fill = TINT;
+    style.spacing.item_spacing = Vec2::new(10.0, 10.0);
+    style.spacing.button_padding = Vec2::new(12.0, 8.0);
+    style.spacing.interact_size.y = 34.0;
+    for (kind, size) in [
+        (egui::TextStyle::Heading, 22.0),
+        (egui::TextStyle::Body, 14.0),
+        (egui::TextStyle::Button, 14.0),
+        (egui::TextStyle::Small, 12.0),
+    ] {
+        style
+            .text_styles
+            .insert(kind, egui::FontId::proportional(size));
+    }
+    ctx.set_style_of(egui::Theme::Light, style);
 }
 
 struct Editor {
@@ -124,6 +201,7 @@ enum Destination {
     Close,
 }
 enum Dialog {
+    Directory(DirectoryPicker),
     Edit(Editor),
     Settings {
         gap: String,
@@ -147,13 +225,29 @@ struct Desktop {
     dialog_fresh: bool,
     close_allowed: bool,
     scroll_selected: bool,
+    compact_map: bool,
+    welcome: bool,
 }
 
 impl Desktop {
-    fn new(ctx: &egui::Context, directory: PathBuf, tool: MetadataTool) -> Self {
+    fn new(ctx: &egui::Context, directory: Option<PathBuf>, tool: MetadataTool) -> Self {
+        let welcome = directory.is_none();
+        let browse_start = directory.clone().unwrap_or_else(|| {
+            std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
+                .map(PathBuf::from)
+                .filter(|path| path.is_dir())
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_else(|| PathBuf::from("."))
+        });
         Self {
-            path: directory.to_string_lossy().into_owned(),
-            state: GuiState::new(directory, tool),
+            path: directory
+                .as_ref()
+                .map_or_else(String::new, |path| path.to_string_lossy().into_owned()),
+            state: if welcome {
+                GuiState::idle(browse_start, tool)
+            } else {
+                GuiState::new(browse_start, tool)
+            },
             map: GuiMap::new(ctx),
             photo: None,
             photo_revision: u64::MAX,
@@ -163,6 +257,15 @@ impl Desktop {
             dialog_fresh: false,
             close_allowed: false,
             scroll_selected: true,
+            compact_map: false,
+            welcome,
+        }
+    }
+    fn choose_directory(&mut self) {
+        if !self.state.writing {
+            self.open_dialog(Dialog::Directory(DirectoryPicker::new(
+                self.state.directory.clone(),
+            )));
         }
     }
     fn open_dialog(&mut self, dialog: Dialog) {
@@ -214,6 +317,9 @@ impl Desktop {
         match destination {
             Destination::Directory(path) => {
                 let result = self.state.open_directory(path);
+                if result.is_ok() {
+                    self.welcome = false;
+                }
                 self.result(result);
             }
             Destination::Rescan => {
@@ -244,7 +350,14 @@ impl Desktop {
             self.navigate(Destination::Close, ctx);
             return;
         }
+        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, Key::O)) {
+            self.choose_directory();
+            return;
+        }
         if ctx.text_edit_focused() || self.state.writing || self.state.loading {
+            return;
+        }
+        if self.welcome {
             return;
         }
         let key = |key| ctx.input(|input| input.key_pressed(key));
@@ -307,110 +420,249 @@ impl Desktop {
 
     fn header(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.heading(RichText::new("PhotoPinFix").color(GREEN));
-            ui.label(RichText::new("照片定位修复").color(MUTED));
+            let (logo, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
+            let painter = ui.painter();
+            painter.rect_filled(logo, 10.0, GREEN);
+            let center = logo.center() - egui::vec2(0.0, 3.0);
+            painter.circle_stroke(center, 7.0, egui::Stroke::new(2.0, Color32::WHITE));
+            painter.circle_filled(center, 2.1, Color32::WHITE);
+            painter.line_segment(
+                [
+                    center + egui::vec2(-5.0, 5.0),
+                    center + egui::vec2(0.0, 13.0),
+                ],
+                egui::Stroke::new(2.0, Color32::WHITE),
+            );
+            painter.line_segment(
+                [
+                    center + egui::vec2(5.0, 5.0),
+                    center + egui::vec2(0.0, 13.0),
+                ],
+                egui::Stroke::new(2.0, Color32::WHITE),
+            );
+            ui.add_space(4.0);
+            ui.label(RichText::new("PhotoPinFix").size(22.0).strong());
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new("让照片回到拍摄的地方")
+                    .color(MUTED)
+                    .size(13.0),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("设置  S").clicked() {
+                if ui.button("设置").on_hover_text("设置 · S").clicked() {
                     self.settings();
                 }
-                if ui.button("详情 / 帮助").clicked() {
+                if ui.button("帮助").clicked() {
                     self.open_dialog(Dialog::Details);
                 }
             });
         });
-        ui.horizontal(|ui| {
-            let path = ui.add(
-                egui::TextEdit::singleline(&mut self.path)
-                    .id_salt("directory-path")
-                    .desired_width((ui.available_width() - 185.0).max(150.0)),
-            );
-            if self.focus_path {
-                path.request_focus();
-                self.focus_path = false;
-            }
-            let enter = path.has_focus()
-                && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Enter));
-            if ui.button("打开目录").clicked() || enter {
-                path.surrender_focus();
-                self.navigate(Destination::Directory(PathBuf::from(&self.path)), ui.ctx());
-            }
-            if ui.button("上级").clicked()
-                && let Some(parent) = self.state.directory.parent()
-            {
-                self.navigate(Destination::Directory(parent.to_owned()), ui.ctx());
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.add_enabled_ui(!self.state.loading && !self.state.writing, |ui| {
-                if ui.button("◀ 上次").clicked() {
-                    self.state.switch_session(-1);
-                    self.scroll_selected = true;
-                }
-                if ui.button("下次 ▶").clicked() {
-                    self.state.switch_session(1);
-                    self.scroll_selected = true;
-                }
-                if ui
-                    .selectable_label(self.state.session.is_none(), "全部照片  A")
-                    .clicked()
-                {
-                    self.state.toggle_all();
-                    self.scroll_selected = true;
-                }
-                if ui.button("重扫").clicked() {
-                    self.navigate(Destination::Rescan, ui.ctx());
-                }
+        ui.add_space(12.0);
+        egui::Frame::NONE
+            .fill(Color32::WHITE)
+            .stroke(egui::Stroke::new(1.0, LINE))
+            .corner_radius(9)
+            .inner_margin(egui::Margin::symmetric(12, 6))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("照片目录").color(MUTED).size(12.0));
+                    let path = ui.add(
+                        egui::TextEdit::singleline(&mut self.path)
+                            .id_salt("directory-path")
+                            .frame(egui::Frame::NONE)
+                            .hint_text("选择文件夹，或输入照片目录")
+                            .desired_width((ui.available_width() - 290.0).max(100.0)),
+                    );
+                    if self.focus_path {
+                        path.request_focus();
+                        self.focus_path = false;
+                    }
+                    let enter = path.has_focus()
+                        && ui.input_mut(|input| {
+                            input.consume_key(egui::Modifiers::NONE, Key::Enter)
+                        });
+                    if ui.button("打开").clicked() || enter {
+                        path.surrender_focus();
+                        if self.path.is_empty() {
+                            self.choose_directory();
+                        } else {
+                            self.navigate(
+                                Destination::Directory(PathBuf::from(&self.path)),
+                                ui.ctx(),
+                            );
+                        }
+                    }
+                    if ui
+                        .button("选择文件夹")
+                        .on_hover_text("Ctrl+O / Command+O")
+                        .clicked()
+                    {
+                        self.choose_directory();
+                    }
+                    if ui
+                        .add_enabled(!self.welcome, egui::Button::new("上级"))
+                        .clicked()
+                        && let Some(parent) = self.state.directory.parent()
+                    {
+                        self.navigate(Destination::Directory(parent.to_owned()), ui.ctx());
+                    }
+                    if ui
+                        .add_enabled(!self.welcome, egui::Button::new("刷新"))
+                        .on_hover_text("重新扫描 · R")
+                        .clicked()
+                    {
+                        self.navigate(Destination::Rescan, ui.ctx());
+                    }
+                });
             });
-            ui.label(self.state.scope_label());
-        });
-        ui.label(RichText::new(self.state.title()).color(MUTED).size(13.0));
-        ui.separator();
+        ui.add_space(18.0);
     }
 
     fn browser(&mut self, ui: &mut egui::Ui) {
-        egui::Panel::bottom("browser-actions").show(ui, |ui| self.browser_actions(ui));
+        let indices = self.state.visible_indices();
         ui.horizontal(|ui| {
-            ui.strong("文件浏览器");
-            ui.colored_label(GREEN, "● 已有 GPS");
-            ui.colored_label(YELLOW, "● 待写入");
-            ui.colored_label(RED, "● 缺失");
+            ui.label(RichText::new("照片库").size(17.0).strong());
+            ui.label(
+                RichText::new(format!("{} 张", indices.len()))
+                    .color(MUTED)
+                    .size(12.0),
+            );
         });
-        let height = ui.available_height().max(1.0);
+        ui.add_enabled_ui(!self.state.loading && !self.state.writing, |ui| {
+            ui.horizontal(|ui| {
+                if ui.small_button("‹").on_hover_text("上一次拍摄").clicked() {
+                    self.state.switch_session(-1);
+                    self.scroll_selected = true;
+                }
+                ui.label(RichText::new(self.state.scope_label()).size(12.0))
+                    .on_hover_text(self.state.title());
+                if ui.small_button("›").on_hover_text("下一次拍摄").clicked() {
+                    self.state.switch_session(1);
+                    self.scroll_selected = true;
+                }
+            });
+            if ui
+                .selectable_label(self.state.session.is_none(), "全部照片")
+                .clicked()
+            {
+                self.state.toggle_all();
+                self.scroll_selected = true;
+            }
+        });
+        for (label, index) in [("起", indices.first()), ("止", indices.last())] {
+            if let Some(&index) = index {
+                let time = self.state.photos[index].capture_time_label();
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(format!("{label}  {time}"))
+                            .size(11.0)
+                            .color(MUTED),
+                    )
+                    .truncate(),
+                )
+                .on_hover_text(time);
+            }
+        }
+        ui.separator();
         egui::ScrollArea::vertical()
             .id_salt("photo-list")
-            .max_height(height)
             .auto_shrink([false, false])
+            .max_height(ui.available_height().max(1.0))
             .show(ui, |ui| {
                 for directory in self.state.directories.clone() {
                     let name = directory.file_name().unwrap_or_default().to_string_lossy();
-                    if ui.button(format!("文件夹  {name}  →")).clicked() {
+                    if ui.button(format!("▸  {name}")).clicked() {
                         self.navigate(Destination::Directory(directory), ui.ctx());
                     }
                 }
-                let indices = self.state.visible_indices();
                 if indices.is_empty() && !self.state.loading {
-                    ui.label("这个范围没有照片。可以打开其他目录。");
+                    ui.label(
+                        RichText::new(
+                            "这里还没有照片
+打开一个目录开始整理。",
+                        )
+                        .color(MUTED),
+                    );
                 }
-                for index in indices {
+                for index in self.state.visible_indices() {
                     let photo = &self.state.photos[index];
                     let selected = self.state.selected == Some(index);
                     let color = photo_color(photo);
-                    let text = format!(
-                        "{}   {}\n{}\n{}",
-                        photo_status(photo),
-                        photo.path.file_name().unwrap_or_default().to_string_lossy(),
-                        photo.capture_time_label(),
-                        coordinate_label(photo, self.state.coordinate_format)
+                    let (rect, response) = ui.allocate_exact_size(
+                        Vec2::new(ui.available_width(), 114.0),
+                        Sense::click(),
                     );
-                    let response = ui.add(
-                        egui::Button::new(RichText::new(text).color(color).size(14.0))
-                            .selected(selected)
-                            .min_size(Vec2::new(ui.available_width(), 76.0))
-                            .wrap(),
+                    let painter = ui.painter_at(rect);
+                    painter.rect_filled(
+                        rect,
+                        8.0,
+                        if selected {
+                            TINT
+                        } else if response.hovered() {
+                            CANVAS
+                        } else {
+                            Color32::WHITE
+                        },
+                    );
+                    if selected {
+                        painter.rect_filled(
+                            egui::Rect::from_min_size(
+                                rect.min + egui::vec2(0.0, 10.0),
+                                Vec2::new(3.0, rect.height() - 20.0),
+                            ),
+                            2.0,
+                            GREEN,
+                        );
+                    }
+                    let origin = rect.min + egui::vec2(12.0, 10.0);
+                    let name = photo.path.file_name().unwrap_or_default().to_string_lossy();
+                    painter.text(
+                        origin,
+                        egui::Align2::LEFT_TOP,
+                        &name,
+                        egui::FontId::proportional(14.0),
+                        INK,
+                    );
+                    painter.circle_filled(origin + egui::vec2(3.0, 31.0), 3.0, color);
+                    painter.text(
+                        origin + egui::vec2(12.0, 23.0),
+                        egui::Align2::LEFT_TOP,
+                        photo_status(photo),
+                        egui::FontId::proportional(11.5),
+                        color,
+                    );
+                    painter.text(
+                        origin + egui::vec2(0.0, 44.0),
+                        egui::Align2::LEFT_TOP,
+                        photo.capture_time_label(),
+                        egui::FontId::proportional(11.0),
+                        MUTED,
+                    );
+                    let (latitude, longitude) =
+                        coordinate_lines(photo, self.state.coordinate_format);
+                    painter.text(
+                        origin + egui::vec2(0.0, 64.0),
+                        egui::Align2::LEFT_TOP,
+                        latitude,
+                        egui::FontId::proportional(11.5),
+                        MUTED,
+                    );
+                    painter.text(
+                        origin + egui::vec2(0.0, 81.0),
+                        egui::Align2::LEFT_TOP,
+                        longitude,
+                        egui::FontId::proportional(11.5),
+                        MUTED,
                     );
                     if selected && self.scroll_selected {
                         response.scroll_to_me(Some(egui::Align::Center));
                     }
+                    let response = response.on_hover_text(format!(
+                        "{}\n{}\n{}",
+                        name,
+                        photo.capture_time_label(),
+                        coordinate_label(photo, self.state.coordinate_format)
+                    ));
                     if response.clicked() {
                         self.state.select(index);
                     }
@@ -423,64 +675,99 @@ impl Desktop {
         self.scroll_selected = false;
     }
 
-    fn browser_actions(&mut self, ui: &mut egui::Ui) {
-        ui.separator();
-        ui.add_enabled_ui(
-            !self.state.writing
-                && !self.state.loading
-                && self.state.selected_photo().is_some_and(|p| p.gps.is_none()),
-            |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("编辑坐标  E").clicked() {
-                        self.edit();
-                    }
+    fn location_actions(&mut self, ui: &mut egui::Ui) {
+        let editable = !self.state.writing
+            && !self.state.loading
+            && self.state.selected_photo().is_some_and(|p| p.gps.is_none());
+        ui.add_enabled_ui(editable, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("编辑坐标")
+                    .on_hover_text("编辑坐标 · E")
+                    .clicked()
+                {
+                    self.edit();
+                }
+                ui.menu_button("采用参考位置", |ui| {
                     for (label, method) in [
-                        ("前图 P", Method::CopyPrevious),
-                        ("后图 N", Method::CopyNext),
-                        ("最近 C", Method::CopyNearest),
-                        ("时间插值 I", Method::TimeInterpolation),
+                        ("前一张已有定位的照片", Method::CopyPrevious),
+                        ("后一张已有定位的照片", Method::CopyNext),
+                        ("时间最近的定位", Method::CopyNearest),
+                        ("按拍摄时间插值", Method::TimeInterpolation),
                     ] {
                         if ui.button(label).clicked() {
                             self.manual(method);
+                            ui.close();
                         }
                     }
-                    if ui.button("恢复自动 U").clicked() {
+                    ui.separator();
+                    if ui.button("恢复自动建议").clicked() {
                         let result = self.state.restore_auto();
                         self.result(result);
+                        ui.close();
                     }
                 });
-            },
-        );
-        ui.horizontal_wrapped(|ui| {
-            let can_write = !self.state.writing && !self.state.loading;
-            if ui
-                .add_enabled(can_write, egui::Button::new("写入当前  Enter"))
-                .clicked()
-            {
-                self.write(false);
-            }
-            if ui
-                .add_enabled(
-                    can_write,
-                    egui::Button::new("写入此范围  Shift+Enter / W")
-                        .fill(Color32::from_rgb(37, 72, 63)),
-                )
-                .clicked()
-            {
-                self.write(true);
-            }
+            });
         });
-        ui.small("已有 GPS 始终保留；所有写入均需确认。");
+    }
+
+    fn inspector(&mut self, ui: &mut egui::Ui) {
+        ui.spacing_mut().item_spacing.y = 6.0;
+        ui.label(RichText::new("照片位置").size(17.0).strong());
+        ui.add_space(2.0);
+        if let Some(photo) = self.state.selected_photo() {
+            badge(ui, photo_status(photo), photo_color(photo));
+            ui.add_space(8.0);
+            for (title, latitude) in [("纬度  /  LATITUDE", true), ("经度  /  LONGITUDE", false)]
+            {
+                ui.label(RichText::new(title).color(MUTED).size(10.5));
+                let value = photo.effective_coordinates().map_or_else(
+                    || "—".into(),
+                    |point| {
+                        format_coordinate(
+                            if latitude { point.lat } else { point.lon },
+                            latitude,
+                            self.state.coordinate_format,
+                            CoordinateNotation::Hemispheres,
+                        )
+                    },
+                );
+                ui.label(RichText::new(value).size(21.0).strong());
+            }
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(if photo.gps.is_some() {
+                    "这张照片已有 GPS，保留原位置。"
+                } else {
+                    "先检查建议，确认后再写入照片。"
+                })
+                .color(MUTED)
+                .size(12.0),
+            );
+        } else {
+            ui.label(RichText::new("选择一张照片查看位置").color(MUTED));
+        }
+        ui.add_space(8.0);
+        self.location_actions(ui);
     }
 
     fn photo(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.strong("照片预览");
-            if let Some(photo) = self.state.selected_photo() {
-                ui.label(photo.path.file_name().unwrap_or_default().to_string_lossy());
-            }
-        });
-        let available = ui.available_size().max(Vec2::splat(1.0));
+        ui.label(RichText::new("照片预览").size(11.0).color(MUTED));
+        if let Some(photo) = self.state.selected_photo() {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(photo.path.file_name().unwrap_or_default().to_string_lossy())
+                        .size(18.0)
+                        .strong(),
+                )
+                .truncate(),
+            );
+        }
+        ui.add_space(6.0);
+        let available = Vec2::new(
+            ui.available_width().max(1.0),
+            (ui.available_height() - 40.0).max(1.0),
+        );
         self.state.request_preview(
             (available.x * ui.ctx().pixels_per_point()).clamp(64.0, 1800.0) as u32,
             (available.y * ui.ctx().pixels_per_point()).clamp(64.0, 1400.0) as u32,
@@ -501,10 +788,13 @@ impl Desktop {
         }
         let (rect, _) = ui.allocate_exact_size(available, Sense::hover());
         ui.painter()
-            .rect_filled(rect, 6.0, Color32::from_rgb(11, 16, 23));
+            .rect_filled(rect, 8.0, Color32::from_rgb(28, 35, 32));
         if let Some(texture) = &self.photo {
             let size = texture.size_vec2();
-            let factor = (rect.width() / size.x).min(rect.height() / size.y);
+            let inset = rect.shrink(16.0);
+            let factor = (inset.width() / size.x)
+                .min(inset.height() / size.y)
+                .max(0.001);
             let target = egui::Rect::from_center_size(rect.center(), size * factor);
             ui.painter().image(
                 texture.id(),
@@ -517,39 +807,108 @@ impl Desktop {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 &self.state.preview_status,
-                egui::FontId::proportional(15.0),
-                MUTED,
+                egui::FontId::proportional(14.0),
+                Color32::from_rgb(177, 191, 182),
             );
         }
+        ui.add_space(4.0);
+        if let Some(photo) = self.state.selected_photo() {
+            ui.add(
+                egui::Label::new(
+                    RichText::new(photo.capture_time_label())
+                        .size(12.0)
+                        .color(MUTED),
+                )
+                .truncate(),
+            )
+            .on_hover_text(photo.capture_time_label());
+        }
+    }
+
+    fn welcome_page(&mut self, ui: &mut egui::Ui) {
+        let available = ui.available_rect_before_wrap();
+        // Reserve the whole welcome surface, including the area below its
+        // centered card, so the containing frame paints the full window.
+        ui.allocate_rect(available, Sense::hover());
+        let width = available.width().min(720.0);
+        let height = available.height().min(420.0);
+        let rect = egui::Rect::from_center_size(available.center(), egui::vec2(width, height));
+        card(ui, rect, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(32.0);
+                let (icon, _) = ui.allocate_exact_size(egui::vec2(64.0, 56.0), Sense::hover());
+                let painter = ui.painter_at(icon);
+                painter.rect_filled(icon.shrink(2.0), 12.0, TINT);
+                let folder = egui::Rect::from_min_size(
+                    icon.min + egui::vec2(12.0, 21.0),
+                    egui::vec2(40.0, 26.0),
+                );
+                painter.rect_filled(
+                    egui::Rect::from_min_size(
+                        icon.min + egui::vec2(12.0, 14.0),
+                        egui::vec2(20.0, 13.0),
+                    ),
+                    4.0,
+                    GREEN,
+                );
+                painter.rect_filled(folder, 4.0, GREEN);
+                ui.add_space(16.0);
+                ui.label(RichText::new("从一组照片开始").size(26.0).strong());
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new("选择照片文件夹，预览并补全缺失的位置。")
+                        .color(MUTED)
+                        .size(14.0),
+                );
+                ui.add_space(20.0);
+                if ui
+                    .add(
+                        primary(RichText::new("选择照片文件夹").color(Color32::WHITE))
+                            .min_size(egui::vec2(180.0, 44.0)),
+                    )
+                    .clicked()
+                {
+                    self.choose_directory();
+                }
+                ui.add_space(12.0);
+                ui.label(
+                    RichText::new("JPEG · PNG · HEIC · 相机 RAW")
+                        .color(MUTED)
+                        .size(12.0),
+                );
+                ui.add_space(24.0);
+                ui.label(
+                    RichText::new("选择文件夹    →    检查定位建议    →    确认写入")
+                        .color(MUTED)
+                        .size(12.0),
+                );
+                if self.state.status != "选择照片文件夹开始" {
+                    ui.add_space(12.0);
+                    ui.colored_label(RED, &self.state.status);
+                }
+            });
+        });
     }
 
     fn content(&mut self, ui: &mut egui::Ui) {
         self.header(ui);
+        if self.welcome {
+            self.welcome_page(ui);
+            return;
+        }
+        // Both side cards need enough height to keep their controls visible.
+        let wide = ui.available_width() >= 1120.0 && ui.available_height() >= 670.0;
         let size = Vec2::new(
             ui.available_width(),
-            (ui.available_height() - 55.0).max(100.0),
+            (ui.available_height() - 78.0).max(180.0),
         );
         let (area, _) = ui.allocate_exact_size(size, Sense::hover());
-        let gap = 16.0;
-        let half = (area.width() - gap) / 2.0;
-        let left = egui::Rect::from_min_size(area.min, Vec2::new(half, area.height()));
-        let right = egui::Rect::from_min_max(egui::pos2(left.right() + gap, area.top()), area.max);
-        ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
-            ui.shrink_clip_rect(left);
-            self.browser(ui);
-        });
-        let photo_rect = egui::Rect::from_min_size(
-            right.min,
-            Vec2::new(right.width(), (right.height() - gap) / 2.0),
-        );
-        let map_rect = egui::Rect::from_min_max(
-            egui::pos2(right.left(), photo_rect.bottom() + gap),
-            right.max,
-        );
-        ui.scope_builder(egui::UiBuilder::new().max_rect(photo_rect), |ui| {
-            ui.shrink_clip_rect(photo_rect);
-            self.photo(ui)
-        });
+        let gap = if wide { 18.0 } else { 12.0 };
+        let library_width = if wide { 278.0 } else { 248.0 };
+        let library = egui::Rect::from_min_size(area.min, Vec2::new(library_width, area.height()));
+        card(ui, library, |ui| self.browser(ui));
+        let workspace =
+            egui::Rect::from_min_max(egui::pos2(library.right() + gap, area.top()), area.max);
         let scope = format!(
             "{:?}:{:?}:{}",
             self.state.directory,
@@ -557,26 +916,104 @@ impl Desktop {
             self.state.photos.len()
         );
         let reset = scope != self.map_scope;
-        self.map_scope = scope;
         let points = self.state.map_points();
-        ui.scope_builder(egui::UiBuilder::new().max_rect(map_rect), |ui| {
-            ui.shrink_clip_rect(map_rect);
-            self.map.show(ui, &points, reset)
-        });
-        ui.separator();
+        if wide {
+            self.map_scope = scope.clone();
+            let inspector_width = 330.0;
+            let preview = egui::Rect::from_min_max(
+                workspace.min,
+                egui::pos2(
+                    workspace.right() - inspector_width - gap,
+                    workspace.bottom(),
+                ),
+            );
+            card(ui, preview, |ui| self.photo(ui));
+            let side = egui::Rect::from_min_max(
+                egui::pos2(preview.right() + gap, workspace.top()),
+                workspace.max,
+            );
+            let details = egui::Rect::from_min_size(
+                side.min,
+                Vec2::new(side.width(), 304.0_f32.min(side.height() * 0.47)),
+            );
+            card(ui, details, |ui| self.inspector(ui));
+            let map =
+                egui::Rect::from_min_max(egui::pos2(side.left(), details.bottom() + gap), side.max);
+            card(ui, map, |ui| self.map.show(ui, &points, reset));
+        } else {
+            card(ui, workspace, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.compact_map, false, "照片预览");
+                    ui.selectable_value(&mut self.compact_map, true, "位置地图");
+                });
+                ui.add_space(6.0);
+                if self.compact_map {
+                    self.map_scope = scope;
+                    self.map.show(ui, &points, reset);
+                } else {
+                    self.photo(ui);
+                }
+            });
+        }
+        ui.add_space(14.0);
         ui.horizontal(|ui| {
             if self.state.loading || self.state.writing {
                 ui.spinner();
             }
-            ui.label(&self.state.status);
+            ui.add(
+                egui::Label::new(RichText::new(&self.state.status).size(12.0).color(MUTED))
+                    .truncate(),
+            );
         });
-        ui.label(
-            RichText::new(
-                "↑↓ 选择照片   ←→ 切换拍摄   A 全部   E 编辑   S 设置   Ctrl+L 目录   Ctrl+Q 退出",
-            )
-            .color(MUTED)
-            .size(12.0),
-        );
+        ui.horizontal(|ui| {
+            if !wide {
+                self.location_actions(ui);
+            } else {
+                ui.label(
+                    RichText::new("已有 GPS 始终保留 · 写入前会再次确认")
+                        .size(12.0)
+                        .color(MUTED),
+                );
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let can_write = !self.state.writing && !self.state.loading;
+                let count = self
+                    .state
+                    .visible_indices()
+                    .iter()
+                    .filter(|&&i| {
+                        self.state.photos[i].gps.is_none()
+                            && self.state.photos[i].candidate.is_some()
+                    })
+                    .count();
+                if ui
+                    .add_enabled(
+                        can_write && count > 0,
+                        primary(
+                            RichText::new(format!("写入候选  ·  {count}")).color(Color32::WHITE),
+                        ),
+                    )
+                    .on_hover_text("写入当前范围 · Shift+Enter / W")
+                    .clicked()
+                {
+                    self.write(true);
+                }
+                let current = self
+                    .state
+                    .selected_photo()
+                    .is_some_and(|p| p.gps.is_none() && p.candidate.is_some());
+                if ui
+                    .add_enabled(
+                        can_write && current,
+                        egui::Button::new("写入当前").min_size(Vec2::new(96.0, 38.0)),
+                    )
+                    .on_hover_text("写入当前照片 · Enter")
+                    .clicked()
+                {
+                    self.write(false);
+                }
+            });
+        });
     }
 
     fn modal(&mut self, ctx: &egui::Context) {
@@ -586,194 +1023,319 @@ impl Desktop {
         let fresh = std::mem::take(&mut self.dialog_fresh);
         let mut dismiss = false;
         let mut accept = false;
+        let mut directory_to_open = None;
         // Consume the key before TextEdit/button focus can interpret it twice.
-        let enter =
-            !fresh && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Enter));
+        let enter = !fresh
+            && !matches!(dialog, Dialog::Directory(_))
+            && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Enter));
         let escape =
             !fresh && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape));
-        egui::Modal::new(egui::Id::unique("desktop-dialog")).show(ctx, |ui| {
-            ui.set_width((ctx.content_rect().width() - 80.0).clamp(300.0, 600.0));
-            match &mut dialog {
-                Dialog::Edit(editor) => {
-                    ui.heading("编辑 GPS 坐标");
-                    ui.label(
-                        RichText::new("先暂存为手动候选，确认写入后才修改照片。").color(MUTED),
-                    );
-                    ui.separator();
-                    let mut format = editor.format;
-                    let mut notation = editor.notation;
-                    ui.horizontal(|ui| {
-                        ui.label("格式");
-                        ui.selectable_value(&mut format, CoordinateFormat::Decimal, "小数度");
-                        ui.selectable_value(&mut format, CoordinateFormat::Dms, "度分秒");
-                        ui.small("F2");
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("方向");
-                        ui.selectable_value(&mut notation, CoordinateNotation::Signed, "＋ / −");
-                        ui.selectable_value(
-                            &mut notation,
-                            CoordinateNotation::Hemispheres,
-                            "N / S / E / W",
+        egui::Modal::new(egui::Id::unique("desktop-dialog"))
+            .frame(
+                egui::Frame::window(&ctx.style_of(egui::Theme::Light))
+                    .inner_margin(24)
+                    .corner_radius(16),
+            )
+            .show(ctx, |ui| {
+                ui.set_width((ctx.content_rect().width() - 96.0).clamp(300.0, 520.0));
+                match &mut dialog {
+                    Dialog::Directory(picker) => {
+                        ui.heading("选择照片文件夹");
+                        ui.label(
+                            RichText::new("浏览文件夹，确认后加载其中的照片。")
+                                .color(MUTED)
+                                .size(12.0),
                         );
-                        ui.small("F3");
-                    });
-                    if ctx.input(|input| input.key_pressed(Key::F2)) {
-                        format = format.toggle();
+                        ui.add_space(6.0);
+                        directory_to_open = picker.show(ui);
+                        dismiss = ui.button("取消").clicked();
                     }
-                    if ctx.input(|input| input.key_pressed(Key::F3)) {
-                        notation = notation.toggle();
-                    }
-                    if format != editor.format || notation != editor.notation {
-                        editor.convert(format, notation);
-                    }
-                    ui.add_space(8.0);
-                    ui.label("纬度  Latitude  ·  −90° 至 ＋90°");
-                    let latitude = ui.add(
-                        egui::TextEdit::singleline(&mut editor.latitude)
-                            .id_salt("gps-latitude")
-                            .desired_width(f32::INFINITY)
-                            .hint_text("例如 31.2304 或 31°13′49.44″N"),
-                    );
-                    if editor.initial_focus {
-                        latitude.request_focus();
-                        editor.initial_focus = false;
-                    }
-                    ui.label("经度  Longitude  ·  −180° 至 ＋180°");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut editor.longitude)
-                            .id_salt("gps-longitude")
-                            .desired_width(f32::INFINITY)
-                            .hint_text("例如 -70.25 或 70°15′00″W"),
-                    );
-                    ui.add_space(8.0);
-                    let parsed = editor.coordinates();
-                    match &parsed {
-                        Ok(value) => {
-                            ui.colored_label(GREEN, format!("✓  {}", value.decimal()));
+                    Dialog::Edit(editor) => {
+                        ui.label(RichText::new("手动定位").color(GREEN).size(12.0).strong());
+                        ui.heading("调整照片位置");
+                        ui.label(
+                            RichText::new("暂存坐标后，可在地图上检查。确认写入才会修改照片。")
+                                .color(MUTED)
+                                .size(13.0),
+                        );
+                        ui.add_space(12.0);
+                        let mut format = editor.format;
+                        let mut notation = editor.notation;
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.label(RichText::new("坐标格式").color(MUTED).size(12.0));
+                                egui::Frame::NONE
+                                    .fill(CANVAS)
+                                    .corner_radius(8)
+                                    .inner_margin(4)
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.selectable_value(
+                                                &mut format,
+                                                CoordinateFormat::Decimal,
+                                                "小数度",
+                                            )
+                                            .on_hover_text("F2 切换格式");
+                                            ui.selectable_value(
+                                                &mut format,
+                                                CoordinateFormat::Dms,
+                                                "度分秒",
+                                            );
+                                        });
+                                    });
+                            });
+                            ui.add_space(12.0);
+                            ui.vertical(|ui| {
+                                ui.label(RichText::new("方向表示").color(MUTED).size(12.0));
+                                egui::Frame::NONE
+                                    .fill(CANVAS)
+                                    .corner_radius(8)
+                                    .inner_margin(4)
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.selectable_value(
+                                                &mut notation,
+                                                CoordinateNotation::Signed,
+                                                "＋ / −",
+                                            )
+                                            .on_hover_text("F3 切换方向表示");
+                                            ui.selectable_value(
+                                                &mut notation,
+                                                CoordinateNotation::Hemispheres,
+                                                "N / S / E / W",
+                                            );
+                                        });
+                                    });
+                            });
+                        });
+                        if ctx.input(|input| input.key_pressed(Key::F2)) {
+                            format = format.toggle();
                         }
-                        Err(error) => {
+                        if ctx.input(|input| input.key_pressed(Key::F3)) {
+                            notation = notation.toggle();
+                        }
+                        if format != editor.format || notation != editor.notation {
+                            editor.convert(format, notation);
+                        }
+                        ui.add_space(12.0);
+                        ui.horizontal(|ui| {
+                            ui.strong("纬度");
+                            ui.label(RichText::new("Latitude").color(MUTED).size(12.0));
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        RichText::new("−90° 至 ＋90°").color(MUTED).size(12.0),
+                                    );
+                                },
+                            );
+                        });
+                        let latitude = ui.add(
+                            egui::TextEdit::singleline(&mut editor.latitude)
+                                .id_salt("gps-latitude")
+                                .desired_width(f32::INFINITY)
+                                .font(egui::FontId::proportional(18.0))
+                                .margin(egui::vec2(12.0, 12.0))
+                                .hint_text("31.2304 或 31°13′49.44″N"),
+                        );
+                        if editor.initial_focus {
+                            latitude.request_focus();
+                            editor.initial_focus = false;
+                        }
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.strong("经度");
+                            ui.label(RichText::new("Longitude").color(MUTED).size(12.0));
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        RichText::new("−180° 至 ＋180°").color(MUTED).size(12.0),
+                                    );
+                                },
+                            );
+                        });
+                        ui.add(
+                            egui::TextEdit::singleline(&mut editor.longitude)
+                                .id_salt("gps-longitude")
+                                .desired_width(f32::INFINITY)
+                                .font(egui::FontId::proportional(18.0))
+                                .margin(egui::vec2(12.0, 12.0))
+                                .hint_text("-70.25 或 70°15′00″W"),
+                        );
+                        ui.add_space(8.0);
+                        let parsed = editor.coordinates();
+                        egui::Frame::NONE
+                            .fill(if parsed.is_ok() {
+                                TINT
+                            } else {
+                                Color32::from_rgb(253, 239, 234)
+                            })
+                            .corner_radius(8)
+                            .inner_margin(12)
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                match &parsed {
+                                    Ok(value) => {
+                                        ui.label(
+                                            RichText::new(format!("✓  {}", value.decimal()))
+                                                .color(GREEN)
+                                                .size(14.0),
+                                        );
+                                    }
+                                    Err(error) => {
+                                        ui.colored_label(RED, error);
+                                    }
+                                }
+                            });
+                        ui.label(
+                            RichText::new(
+                                "支持小数、度分秒和方位字母。Tab 切换输入框，F2 / F3 切换表示。",
+                            )
+                            .color(MUTED)
+                            .size(11.0),
+                        );
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            dismiss = ui.button("取消").on_hover_text("Esc").clicked();
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    accept = ui
+                                        .add_enabled(
+                                            parsed.is_ok(),
+                                            primary(
+                                                RichText::new("暂存坐标  →").color(Color32::WHITE),
+                                            ),
+                                        )
+                                        .clicked()
+                                        || (parsed.is_ok() && enter);
+                                },
+                            );
+                        });
+                    }
+                    Dialog::Settings {
+                        gap,
+                        window,
+                        format,
+                    } => {
+                        ui.heading("本次运行设置");
+                        ui.label("修改后立即重新计算自动建议，手动候选保留。");
+                        ui.separator();
+                        ui.label("相邻照片间隔严格小于（秒）");
+                        ui.add(egui::TextEdit::singleline(gap).desired_width(180.0));
+                        ui.label("每侧参考到目标照片最多相差（秒）");
+                        ui.add(egui::TextEdit::singleline(window).desired_width(180.0));
+                        ui.horizontal(|ui| {
+                            ui.label("经纬度显示");
+                            ui.selectable_value(format, CoordinateFormat::Decimal, "小数度");
+                            ui.selectable_value(format, CoordinateFormat::Dms, "度分秒");
+                        });
+                        let parsed = settings_value(gap, window);
+                        if let Err(error) = &parsed {
                             ui.colored_label(RED, error);
                         }
-                    }
-                    ui.small("输入同时接受小数、度分秒、正负号和方位字母。Tab 切换输入框。");
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        dismiss = ui.button("取消  Esc").clicked();
-                        accept = parsed.is_ok()
-                            && (ui
-                                .add_enabled(parsed.is_ok(), egui::Button::new("暂存坐标  Enter"))
-                                .clicked()
-                                || enter);
-                    });
-                }
-                Dialog::Settings {
-                    gap,
-                    window,
-                    format,
-                } => {
-                    ui.heading("本次运行设置");
-                    ui.label("修改后立即重新计算自动建议，手动候选保留。");
-                    ui.separator();
-                    ui.label("相邻照片间隔严格小于（秒）");
-                    ui.add(egui::TextEdit::singleline(gap).desired_width(180.0));
-                    ui.label("每侧参考到目标照片最多相差（秒）");
-                    ui.add(egui::TextEdit::singleline(window).desired_width(180.0));
-                    ui.horizontal(|ui| {
-                        ui.label("经纬度显示");
-                        ui.selectable_value(format, CoordinateFormat::Decimal, "小数度");
-                        ui.selectable_value(format, CoordinateFormat::Dms, "度分秒");
-                    });
-                    let parsed = settings_value(gap, window);
-                    if let Err(error) = &parsed {
-                        ui.colored_label(RED, error);
-                    }
-                    ui.small("设置只保留在内存中，下次启动恢复默认值。");
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        dismiss = ui.button("取消  Esc").clicked();
-                        accept = parsed.is_ok()
-                            && (ui
-                                .add_enabled(parsed.is_ok(), egui::Button::new("应用设置  Enter"))
-                                .clicked()
-                                || enter);
-                    });
-                }
-                Dialog::Write(snapshot) => {
-                    ui.heading(format!("确认写入 {} 张照片？", snapshot.items.len()));
-                    ui.label(&snapshot.scope);
-                    ui.label("写入 GPS 和 PhotoPinFix 来源标记，保留原文件备份与文件时间。");
-                    ui.separator();
-                    egui::ScrollArea::vertical()
-                        .max_height(260.0)
-                        .show(ui, |ui| {
-                            for item in &snapshot.items {
-                                ui.strong(
-                                    item.path.file_name().unwrap_or_default().to_string_lossy(),
-                                );
-                                ui.colored_label(
-                                    YELLOW,
-                                    format!(
-                                        "{} · {} · {}",
-                                        item.candidate.coordinates.decimal(),
-                                        item.candidate.provenance.mode.as_str(),
-                                        item.candidate.provenance.method.label()
-                                    ),
-                                );
-                            }
+                        ui.small("设置只保留在内存中，下次启动恢复默认值。");
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            dismiss = ui.button("取消  Esc").clicked();
+                            accept = parsed.is_ok()
+                                && (ui
+                                    .add_enabled(
+                                        parsed.is_ok(),
+                                        primary(
+                                            RichText::new("应用设置  Enter").color(Color32::WHITE),
+                                        ),
+                                    )
+                                    .clicked()
+                                    || enter);
                         });
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        let cancel = ui.button("取消  Esc");
-                        if fresh {
-                            cancel.request_focus();
-                        }
-                        dismiss = cancel.clicked() || enter;
-                        accept = ui.button("确认写入  Y").clicked()
-                            || (!fresh && ctx.input(|input| input.key_pressed(Key::Y)));
-                    });
-                }
-                Dialog::Leave(_) => {
-                    ui.heading("离开前丢弃手动候选？");
-                    ui.label("还有手动编辑的坐标尚未写入照片。");
-                    ui.horizontal(|ui| {
-                        let cancel = ui.button("继续编辑  Esc");
-                        if fresh {
-                            cancel.request_focus();
-                        }
-                        dismiss = cancel.clicked() || enter;
-                        accept = ui.button("丢弃并继续  Y").clicked()
-                            || (!fresh && ctx.input(|input| input.key_pressed(Key::Y)));
-                    });
-                }
-                Dialog::Details => {
-                    ui.heading("详情与快捷键");
-                    ui.label("↑↓ 选择 · ←→ Session · A 全部 · E 编辑 · S 设置");
-                    ui.label("P 前图 · N 后图 · C 最近 · I 时间插值 · U 恢复自动");
-                    ui.label("Enter 写当前 · Shift+Enter / W 写范围 · Y 确认 · Esc 取消");
-                    ui.label("地图：拖动平移、滚轮缩放；默认无底图。");
-                    ui.label("Ctrl+L 目录 · R 重扫 · Ctrl+Q 退出（macOS 使用 Command）");
-                    ui.separator();
-                    ui.label(&self.state.status);
-                    if let Some(photo) = self.state.selected_photo() {
-                        ui.label(photo.path.display().to_string());
-                        if let Some(error) = &photo.error {
-                            ui.colored_label(RED, error);
-                        }
                     }
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            for warning in &self.state.warnings {
-                                ui.colored_label(YELLOW, warning);
+                    Dialog::Write(snapshot) => {
+                        ui.heading(format!("确认写入 {} 张照片？", snapshot.items.len()));
+                        ui.label(&snapshot.scope);
+                        ui.label("写入 GPS 和 PhotoPinFix 来源标记，保留原文件备份与文件时间。");
+                        ui.separator();
+                        egui::ScrollArea::vertical()
+                            .max_height(260.0)
+                            .show(ui, |ui| {
+                                for item in &snapshot.items {
+                                    ui.strong(
+                                        item.path.file_name().unwrap_or_default().to_string_lossy(),
+                                    );
+                                    ui.colored_label(
+                                        YELLOW,
+                                        format!(
+                                            "{} · {} · {}",
+                                            item.candidate.coordinates.decimal(),
+                                            item.candidate.provenance.mode.as_str(),
+                                            item.candidate.provenance.method.label()
+                                        ),
+                                    );
+                                }
+                            });
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            let cancel = ui.button("取消  Esc");
+                            if fresh {
+                                cancel.request_focus();
                             }
+                            dismiss = cancel.clicked() || enter;
+                            accept = ui
+                                .add(primary(RichText::new("确认写入  Y").color(Color32::WHITE)))
+                                .clicked()
+                                || (!fresh && ctx.input(|input| input.key_pressed(Key::Y)));
                         });
-                    dismiss = ui.button("关闭  Esc").clicked() || enter;
+                    }
+                    Dialog::Leave(_) => {
+                        ui.heading("离开前丢弃手动候选？");
+                        ui.label("还有手动编辑的坐标尚未写入照片。");
+                        ui.horizontal(|ui| {
+                            let cancel = ui.button("继续编辑  Esc");
+                            if fresh {
+                                cancel.request_focus();
+                            }
+                            dismiss = cancel.clicked() || enter;
+                            accept = ui.button("丢弃并继续  Y").clicked()
+                                || (!fresh && ctx.input(|input| input.key_pressed(Key::Y)));
+                        });
+                    }
+                    Dialog::Details => {
+                        ui.heading("详情与快捷键");
+                        ui.label("↑↓ 选择 · ←→ Session · A 全部 · E 编辑 · S 设置");
+                        ui.label("P 前图 · N 后图 · C 最近 · I 时间插值 · U 恢复自动");
+                        ui.label("Enter 写当前 · Shift+Enter / W 写范围 · Y 确认 · Esc 取消");
+                        ui.label("地图：拖动平移、滚轮缩放；默认无底图。");
+                        ui.label("Ctrl+L 目录 · R 重扫 · Ctrl+Q 退出（macOS 使用 Command）");
+                        ui.label("Ctrl+O 选择文件夹；GUI 启动后可以关闭终端。");
+                        ui.separator();
+                        ui.label(&self.state.status);
+                        if let Some(photo) = self.state.selected_photo() {
+                            ui.label(photo.path.display().to_string());
+                            if let Some(error) = &photo.error {
+                                ui.colored_label(RED, error);
+                            }
+                        }
+                        egui::ScrollArea::vertical()
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                for warning in &self.state.warnings {
+                                    ui.colored_label(YELLOW, warning);
+                                }
+                            });
+                        dismiss = ui.button("关闭  Esc").clicked() || enter;
+                    }
                 }
-            }
-        });
+            });
+        if let Some(directory) = directory_to_open {
+            self.navigate(Destination::Directory(directory), ctx);
+            return;
+        }
         if accept {
             match dialog {
+                Dialog::Directory(_) => {}
                 Dialog::Edit(editor) => {
                     let result = editor
                         .coordinates()
@@ -817,11 +1379,14 @@ impl eframe::App for Desktop {
             self.navigate(Destination::Close, &ctx);
         }
         self.keys(&ctx);
-        egui::Frame::central_panel(ui.style()).show(ui, |ui| {
-            ui.add_enabled_ui(self.dialog.is_none() && !self.state.writing, |ui| {
-                self.content(ui)
+        egui::Frame::NONE
+            .fill(CANVAS)
+            .inner_margin(egui::Margin::same(20))
+            .show(ui, |ui| {
+                ui.add_enabled_ui(self.dialog.is_none() && !self.state.writing, |ui| {
+                    self.content(ui)
+                });
             });
-        });
         self.modal(&ctx);
     }
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -865,6 +1430,24 @@ fn photo_status(photo: &Photo) -> String {
     } else {
         "缺失 · 待定位".into()
     }
+}
+
+fn coordinate_lines(photo: &Photo, format: CoordinateFormat) -> (String, String) {
+    photo.effective_coordinates().map_or_else(
+        || ("纬度  —".into(), "经度  —".into()),
+        |point| {
+            (
+                format!(
+                    "纬度  {}",
+                    format_coordinate(point.lat, true, format, CoordinateNotation::Hemispheres)
+                ),
+                format!(
+                    "经度  {}",
+                    format_coordinate(point.lon, false, format, CoordinateNotation::Hemispheres)
+                ),
+            )
+        },
+    )
 }
 
 fn coordinate_label(photo: &Photo, format: CoordinateFormat) -> String {
