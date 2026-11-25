@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -76,6 +77,8 @@ class WindowsDesktop:
     def __init__(self, pid, temporary):
         from ctypes import wintypes as W
         self.pid = pid
+        self.main_window = None
+        self.preparation = {}
         self.u = C.WinDLL('user32', use_last_error=True)
         self.W = W
         self.callback = C.WINFUNCTYPE(W.BOOL, W.HWND, W.LPARAM)
@@ -92,13 +95,38 @@ class WindowsDesktop:
         self.u.ShowWindow.argtypes = [W.HWND, C.c_int]
         self.u.MoveWindow.argtypes = [W.HWND, C.c_int, C.c_int, C.c_int, C.c_int, W.BOOL]
         self.u.GetForegroundWindow.restype = W.HWND
-        self.u.GetSystemMetrics.argtypes = [C.c_int]
+        self.u.SystemParametersInfoW.argtypes = [W.UINT, W.UINT, C.c_void_p, W.UINT]
+        self.u.SystemParametersInfoW.restype = W.BOOL
         try:
             self.u.SetProcessDPIAware()
         except AttributeError:
             pass
-        if self.u.GetSystemMetrics(0) < 880 or self.u.GetSystemMetrics(1) < 640:
+        work = self.work_area()
+        if work.right - work.left < 880 or work.bottom - work.top < 640:
             raise RuntimeError('Windows runner has no usable interactive desktop')
+
+    def work_area(self):
+        # SPI_GETWORKAREA excludes the taskbar and desktop toolbars. Its RECT
+        # is in physical pixels, independently of the caller's DPI awareness.
+        # https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-systemparametersinfow
+        work = self.W.RECT()
+        if not self.u.SystemParametersInfoW(0x0030, 0, C.byref(work), 0):
+            raise RuntimeError('Cannot read the Windows desktop work area')
+        if work.right <= work.left or work.bottom <= work.top:
+            raise RuntimeError('Windows runner has an empty desktop work area')
+        return work
+
+    def outer_size(self, window, width, height):
+        outer, inner = self.W.RECT(), self.W.RECT()
+        if not self.u.GetWindowRect(window, C.byref(outer)) or not self.u.GetClientRect(window, C.byref(inner)):
+            raise RuntimeError('Cannot measure a missing Windows window')
+        dpi = self.u.GetDpiForWindow(window)
+        if not dpi:
+            raise RuntimeError('Cannot measure the Windows window DPI')
+        desired = (round(width * dpi / 96.0), round(height * dpi / 96.0))
+        total = (desired[0] + outer.right - outer.left - (inner.right - inner.left),
+                 desired[1] + outer.bottom - outer.top - (inner.bottom - inner.top))
+        return total, desired
 
     def windows(self):
         found = []
@@ -116,13 +144,24 @@ class WindowsDesktop:
 
     def focus(self, window):
         self.u.ShowWindow(window, 9)
-        # Hosted Windows desktops can be smaller than the app's preferred
-        # window. Keep its real rendered client area inside the display.
+        # Fit the whole real window above the taskbar, without cropping the
+        # capture or reducing the main client viewport below its supported size.
+        work = self.work_area()
+        width, height = work.right - work.left, work.bottom - work.top
+        minimum = (0, 0)
+        if window == self.main_window:
+            minimum, _ = self.outer_size(window, 880, 640)
+            if minimum[0] > width or minimum[1] > height:
+                raise RuntimeError('Windows work area cannot fit the minimum client viewport at its current DPI')
         rect = self.W.RECT()
-        if self.u.GetWindowRect(window, C.byref(rect)):
-            width, height = self.u.GetSystemMetrics(0), self.u.GetSystemMetrics(1)
-            if rect.left < 0 or rect.top < 0 or rect.right > width or rect.bottom > height:
-                self.u.MoveWindow(window, 0, 0, min(rect.right - rect.left, width), min(rect.bottom - rect.top, height), True)
+        if not self.u.GetWindowRect(window, C.byref(rect)):
+            raise RuntimeError('Cannot focus a missing Windows window')
+        fitted = (max(minimum[0], min(rect.right - rect.left, width)),
+                  max(minimum[1], min(rect.bottom - rect.top, height)))
+        if (rect.left < work.left or rect.top < work.top or rect.right > work.right or rect.bottom > work.bottom
+                or fitted != (rect.right - rect.left, rect.bottom - rect.top)):
+            if not self.u.MoveWindow(window, work.left, work.top, *fitted, True):
+                raise RuntimeError('Windows refused to fit the real window inside its desktop work area')
         self.u.SetForegroundWindow(window)
         time.sleep(0.15)
         if int(self.u.GetForegroundWindow() or 0) != window:
@@ -132,23 +171,39 @@ class WindowsDesktop:
         return next((window for window in self.windows() if window != main), None)
 
     def prepare(self, window):
+        self.main_window = window
+        work = self.work_area()
+        self.preparation = {
+            'dpi': self.u.GetDpiForWindow(window),
+            'work_area': [work.left, work.top, work.right, work.bottom],
+            'before': self.window_geometry(window),
+        }
         self.focus(window)
+        self.preparation['after'] = self.window_geometry(window)
 
-    def resize(self, window, width, height):
+    def window_geometry(self, window):
         outer, inner = self.W.RECT(), self.W.RECT()
         if not self.u.GetWindowRect(window, C.byref(outer)) or not self.u.GetClientRect(window, C.byref(inner)):
-            raise RuntimeError('Cannot resize a missing Windows window')
-        scale = self.u.GetDpiForWindow(window) / 96.0
-        desired = (round(width * scale), round(height * scale))
-        total_width = desired[0] + outer.right - outer.left - inner.right
-        total_height = desired[1] + outer.bottom - outer.top - inner.bottom
-        if total_width > self.u.GetSystemMetrics(0) or total_height > self.u.GetSystemMetrics(1):
-            raise RuntimeError('Windows desktop cannot fit the minimum client viewport at its current DPI')
-        if not self.u.MoveWindow(window, 0, 0, total_width, total_height, True):
+            raise RuntimeError('Cannot measure the Windows window geometry')
+        origin = self.W.POINT(inner.left, inner.top)
+        if not self.u.ClientToScreen(window, C.byref(origin)):
+            raise RuntimeError('Cannot locate the Windows client viewport on screen')
+        return {'outer': [outer.left, outer.top, outer.right, outer.bottom],
+                'client': [origin.x, origin.y, origin.x + inner.right - inner.left,
+                           origin.y + inner.bottom - inner.top]}
+
+    def resize(self, window, width, height):
+        (total_width, total_height), desired = self.outer_size(window, width, height)
+        work = self.work_area()
+        if total_width > work.right - work.left or total_height > work.bottom - work.top:
+            raise RuntimeError('Windows work area cannot fit the minimum client viewport at its current DPI')
+        if not self.u.MoveWindow(window, work.left, work.top, total_width, total_height, True):
             raise RuntimeError('Windows refused to resize the real window')
         time.sleep(0.2)
-        self.u.GetClientRect(window, C.byref(inner))
-        if (inner.right, inner.bottom) != desired:
+        inner = self.W.RECT()
+        if not self.u.GetClientRect(window, C.byref(inner)):
+            raise RuntimeError('Cannot measure the resized Windows client viewport')
+        if (inner.right - inner.left, inner.bottom - inner.top) != desired:
             raise RuntimeError('Windows did not apply the requested compact client viewport')
 
     def image_scale(self, window, image):
@@ -184,9 +239,22 @@ class WindowsDesktop:
         rect = self.W.RECT()
         if not self.u.GetWindowRect(window, C.byref(rect)):
             raise RuntimeError('Native Windows window no longer exists')
-        if rect.left < 0 or rect.top < 0 or rect.right > self.u.GetSystemMetrics(0) or rect.bottom > self.u.GetSystemMetrics(1):
-            raise RuntimeError('Native Windows window exceeds the available desktop; refusing a clipped or padded screenshot')
+        work = self.work_area()
+        if rect.left < work.left or rect.top < work.top or rect.right > work.right or rect.bottom > work.bottom:
+            raise RuntimeError('Native Windows window exceeds the desktop work area; refusing an obscured or clipped screenshot')
         return ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom), all_screens=True).convert('RGB')
+
+
+class AppleScriptError(RuntimeError):
+    """A real osascript failure, retaining its bounded diagnostic and code."""
+
+    def __init__(self, returncode, stderr):
+        self.returncode = returncode
+        detail = stderr.decode('utf-8', errors='replace')[-2000:].strip()
+        match = re.search(r'\((-?\d+)\)\s*$', detail)
+        self.error_code = int(match.group(1)) if match else None
+        code = f', AppleScript {self.error_code}' if self.error_code is not None else ''
+        super().__init__(f'macOS System Events failed (exit {returncode}{code}): {detail or "(empty stderr)"}')
 
 
 class MacDesktop:
@@ -201,8 +269,8 @@ class MacDesktop:
         # preemptively reject it based on an installed Python's AX identity.
         result = subprocess.run(['/usr/bin/osascript', '-e', script], capture_output=True, timeout=10)
         if result.returncode:
-            raise RuntimeError('macOS System Events refused native UI automation; the runner needs its supported Accessibility/Automation permissions')
-        return result.stdout.decode().strip()
+            raise AppleScriptError(result.returncode, result.stderr)
+        return result.stdout.decode('utf-8', errors='replace').strip()
 
     def windows(self):
         items = self.q.CGWindowListCopyWindowInfo(self.q.kCGWindowListOptionOnScreenOnly, self.q.kCGNullWindowID) or []
@@ -219,9 +287,23 @@ class MacDesktop:
             return other
         # NSOpenPanel can be a native sheet without a separate app-owned
         # CGWindow. Ask the actual accessibility tree, never infer from pixels.
-        count = self.system_events('tell application "System Events" to tell '
-                                   f'(first process whose unix id is {self.pid}) '
-                                   'to return count of sheets of window 1')
+        script = f'''
+tell application "System Events"
+    set targetProcesses to every process whose unix id is {self.pid}
+    set sheetCount to 0
+    repeat with targetProcess in targetProcesses
+        tell targetProcess
+            repeat with currentWindow in (get windows)
+                set sheetCount to sheetCount + (count of sheets of currentWindow)
+            end repeat
+        end tell
+    end repeat
+    return sheetCount
+end tell
+'''
+        # An AX lookup error is not evidence that the sheet has closed. Keep
+        # the typed error so wait() can retry both open and close predicates.
+        count = self.system_events(script)
         return main if int(count) > 0 else None
 
     def bounds(self, window):
@@ -334,13 +416,24 @@ post($.kCGEventLeftMouseUp);
 
 def wait(application, operation, description, timeout=35):
     deadline = time.monotonic() + timeout
+    last_stale_error = None
     while time.monotonic() < deadline:
         if application.poll() is not None:
             raise RuntimeError(f'GUI exited with {application.returncode} while waiting for {description}')
-        result = operation()
-        if result:
-            return result
+        try:
+            result = operation()
+        except AppleScriptError as error:
+            # Only an actual object/index race retries. In particular, a stale
+            # object must not look like None to a "dialog is closed" predicate.
+            if error.error_code not in (-1728, -1719):
+                raise
+            last_stale_error = error
+        else:
+            if result:
+                return result
         time.sleep(0.15)
+    if last_stale_error is not None:
+        raise RuntimeError(f'Timed out waiting for {description}; last AX lookup error: {last_stale_error}') from last_stale_error
     raise RuntimeError('Timed out waiting for ' + description)
 
 
@@ -414,7 +507,7 @@ def run(args):
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     report = {'platform': sys.platform, 'real_native_windows': False, 'screenshots': [], 'status': 'failed'}
-    application = desktop = None
+    application = desktop = main = None
     primary_error = None
     try:
         oracle = PortableOracle()
@@ -440,6 +533,8 @@ def run(args):
                     desktop = (WindowsDesktop if sys.platform == 'win32' else MacDesktop)(application.pid, temporary)
                     main = wait(application, lambda: next(iter(desktop.windows()), None), 'native application window')
                     desktop.prepare(main)
+                    if sys.platform == 'win32':
+                        report['window_geometry'] = desktop.preparation
                     settled(application, desktop, main, output / 'initial.png')
                     desktop.key('down', window=main)
                     overview = settled(application, desktop, main, output / 'overview.png', require_photo=True)
@@ -479,6 +574,14 @@ def run(args):
                                   screenshots=['overview.png', 'gps-editor.png', 'native-folder-dialog.png', 'compact-photo.png', 'compact-location.png'])
             except BaseException as error:
                 primary_error = error
+                # Capture before terminating the real window. Diagnostics
+                # must not replace the original automation/acceptance error.
+                if desktop is not None and main is not None:
+                    try:
+                        desktop.capture(main).save(output / 'failure-main-window.png')
+                        report['failure_screenshot'] = 'failure-main-window.png'
+                    except Exception as screenshot_error:
+                        report['failure_screenshot_error'] = str(screenshot_error)[-2000:]
                 raise
             finally:
                 # Windows locks the copied executable and Mesa DLLs while the

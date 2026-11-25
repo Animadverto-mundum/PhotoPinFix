@@ -103,7 +103,9 @@ region with `screencapture`. It never edits privacy-permission databases. The
 runner must provide an interactive desktop and permit native automation and
 screen capture. Missing permissions cause an explicit failure report, not a
 synthetic image or a successful skip. Windows uses native Win32 window/input
-APIs and real desktop captures.
+APIs and real desktop captures. Its window placement and capture checks use
+the desktop work area, excluding the taskbar, so a screenshot with obscured
+bottom controls cannot pass simply because it fits the full display.
 
 The standard Windows runner's built-in OpenGL implementation is too old for
 `egui_glow`. Windows CI therefore prepares a **test-only** LLVMpipe driver:
