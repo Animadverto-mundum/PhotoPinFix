@@ -25,6 +25,8 @@ import tempfile
 import time
 import zlib
 
+from gui_visual import assert_map_canvas, assert_selected_tab, compact_tab_points, photo_geometry
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -274,6 +276,8 @@ class X11:
             self.key({"-": "minus", ".": "period"}.get(char, char))
 
     def click(self, x, y):
+        self.lib.XSetInputFocus(self.display, self.window, 1, 0)
+        x, y = round(x), round(y)
         root_x, root_y, child = C.c_int(), C.c_int(), C.c_ulong()
         if not self.lib.XTranslateCoordinates(self.display, self.window, self.root, x, y,
                                              C.byref(root_x), C.byref(root_y), C.byref(child)):
@@ -432,19 +436,17 @@ def run(args):
             x.key("bracketleft")
             if screenshots:
                 # A quiet loading placeholder is also a stable frame. For the
-                # documentation landscape, require actual photographic detail
-                # in the middle of the wide preview before taking the picture.
+                # documentation landscape, require an actual, sufficiently
+                # large photograph inside the painted preview canvas.
                 def landscape_rendered():
-                    width, height, pixels = x.frame()
-                    colors = {
-                        pixels[(row * width + column) * 3:(row * width + column) * 3 + 3]
-                        for row in range(int(height * 0.35), int(height * 0.65), 4)
-                        for column in range(int(width * 0.35), int(width * 0.68), 4)
-                    }
-                    return len(colors) > 1500
+                    try:
+                        return photo_geometry(x.frame())
+                    except RuntimeError:
+                        return False
 
                 x.wait(landscape_rendered, "landscape pixels replace the loading placeholder", timeout=30)
-            x.settled(artifacts / "gui-overview.png" if screenshots else None)
+            overview = x.settled(artifacts / "gui-overview.png" if screenshots else None)
+            overview_geometry = photo_geometry(overview)
             x.key("e")
             x.settled(artifacts / "gui-02-editor.png")
             x.key("a", ("Control_L",))
@@ -498,22 +500,31 @@ def run(args):
             x.lib.XResizeWindow(x.display, x.window, 880, 640)
             x.lib.XFlush(x.display)
             x.wait(lambda: (x.attributes().width, x.attributes().height) == (880, 640), "minimum-size viewport")
-            x.settled(artifacts / "gui-12-minimum-880x640.png")
+            compact = x.settled(artifacts / "gui-12-minimum-880x640.png")
+            compact_geometry = photo_geometry(compact)
             # Compact-layout tabs must be reachable by mouse as well as the
-            # keyboard workflows tested above. These points are client pixels
-            # in the fixed 880x640, 1x-DPI test viewport.
-            x.click(425, 285)
-            x.settled(artifacts / "gui-12b-minimum-map.png")
-            def compact_canvas(color):
-                width, height, pixels = x.frame()
-                return sum(pixels[(y * width + column) * 3:(y * width + column) * 3 + 3] == color
-                           for y in range(330, min(height - 110, 520), 2)
-                           for column in range(300, min(width - 35, 840), 2))
-            assert compact_canvas(bytes((241, 246, 242))) > 2000, "Mouse did not open the compact map tab"
-            x.click(520, 285)
-            x.settled(artifacts / "gui-12c-minimum-location.png")
-            x.click(336, 285)
-            x.settled()
+            # keyboard workflows. Locate them in the real capture so header
+            # height, window decorations and future layout shifts are harmless.
+            tab_points = compact_tab_points(compact)
+            x.click(*tab_points[1])
+            map_frame = x.settled(artifacts / "gui-12b-minimum-map.png")
+            assert_selected_tab(map_frame, tab_points[1])
+            assert_map_canvas(map_frame, tab_points[0])
+            x.click(*tab_points[2])
+            location = x.settled(artifacts / "gui-12c-minimum-location.png")
+            assert_selected_tab(location, tab_points[2])
+            # Switching to short content must not pull the action bar upward
+            # across the library, or leave an unpainted strip at the bottom.
+            footer_bytes = compact[0] * 56 * 3
+            for name, frame in (("map", map_frame), ("location", location)):
+                assert frame[2][-footer_bytes:] == compact[2][-footer_bytes:], \
+                    f"Action bar moved or changed after selecting the {name} tab"
+            changed = sum(abs(before - after) > 12 for before, after in zip(compact[2], location[2]))
+            assert changed > len(compact[2]) * 0.04, "Location tab did not visibly replace the photograph"
+            x.click(*tab_points[0])
+            restored = x.settled()
+            assert_selected_tab(restored, tab_points[0])
+            photo_geometry(restored)
             # The fifth photo still has no GPS. Check the entire coordinate
             # form at the minimum window size without writing or staging it.
             for _ in range(4):
@@ -547,6 +558,8 @@ def run(args):
                     shutil.copyfile(artifacts / source, screenshots / name)
             report = {"executable": binary.name, "empty_path": True, "outside_checkout": True,
                       "native_window": True, "manual_and_auto_writes": True, "all_times_and_inode_preserved": True,
+                      "photo_geometry": {"overview": overview_geometry, "compact": compact_geometry},
+                      "compact_tab_points": tab_points,
                       "birthtime_available": all(value["created_ns"] is not None for value in expected_times.values()),
                       "screenshots": sorted(path.name for path in artifacts.glob("gui-*.png"))}
             (artifacts / "gui-report.json").write_text(json.dumps(report, indent=2) + "\n")

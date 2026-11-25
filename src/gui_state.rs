@@ -210,9 +210,9 @@ impl GuiState {
     pub fn scope_label(&self) -> String {
         match self.session {
             Some(index) if !self.sessions.is_empty() => {
-                format!("Session {}/{}", index + 1, self.sessions.len())
+                format!("拍摄 {}/{}", index + 1, self.sessions.len())
             }
-            Some(_) => "暂无拍摄 session".into(),
+            Some(_) => "暂无拍摄".into(),
             None => "全部照片".into(),
         }
     }

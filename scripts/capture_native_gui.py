@@ -7,6 +7,7 @@ Linux uses check_gui.py/check_gui_launch.py with their private X11 desktop.
 """
 import argparse
 import ctypes as C
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,43 @@ import time
 
 from PIL import Image, ImageChops, ImageGrab
 from check_gui import Oracle, ROOT, fixtures, preserved_read, snapshot
+from gui_visual import compact_selected_tab as selected_tab_geometry, compact_tab_points, photo_geometry
+
+
+def windows_test_opengl(directory, destination, environment):
+    """Copy only manifest-verified CI renderer DLLs beside the disposable exe."""
+    if sys.platform != 'win32':
+        raise RuntimeError('--windows-opengl-dir is only supported by Windows capture tests')
+    directory = Path(directory).resolve()
+    manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
+    expected = {'schema_version': 1, 'purpose': 'ci-software-opengl',
+                'architecture': 'x86_64', 'driver': 'llvmpipe'}
+    if any(manifest.get(key) != value for key, value in expected.items()):
+        raise RuntimeError('Unexpected CI OpenGL manifest purpose, architecture or driver')
+    files = manifest.get('files')
+    if not isinstance(files, dict) or 'opengl32.dll' not in files:
+        raise RuntimeError('CI OpenGL manifest is missing opengl32.dll')
+
+    def digest(path):
+        with path.open('rb') as stream:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+    for name, expected_hash in files.items():
+        if not isinstance(name, str) or Path(name).name != name or '/' in name or '\\' in name or not name.lower().endswith('.dll'):
+            raise RuntimeError('CI OpenGL manifest contains a non-DLL or non-basename entry')
+        if not isinstance(expected_hash, str) or len(expected_hash) != 64 or any(char not in '0123456789abcdef' for char in expected_hash):
+            raise RuntimeError('CI OpenGL manifest contains an invalid SHA256')
+        source = (directory / name).resolve()
+        if source.parent != directory or not source.is_file() or digest(source) != expected_hash:
+            raise RuntimeError('CI OpenGL DLL checksum or location verification failed: ' + name)
+        shutil.copyfile(source, destination / name)
+        if digest(destination / name) != expected_hash:
+            raise RuntimeError('CI OpenGL DLL changed while copying: ' + name)
+    environment.update(GALLIUM_DRIVER='llvmpipe', LIBGL_ALWAYS_SOFTWARE='1',
+                       GLUTIN_WGL_OPENGL_DLL=str((destination / 'opengl32.dll').resolve()))
+    return {'scope': 'CI capture only; DLLs are not part of the application package',
+            'requested_driver': 'llvmpipe', 'version': manifest.get('version'),
+            'archive_sha256': manifest.get('archive_sha256'), 'files': files}
 
 
 class PortableOracle(Oracle):
@@ -113,13 +151,19 @@ class WindowsDesktop:
         if (inner.right, inner.bottom) != desired:
             raise RuntimeError('Windows did not apply the requested compact client viewport')
 
-    def click(self, window, x, y):
+    def image_scale(self, window, image):
+        rect = self.W.RECT()
+        if not self.u.GetWindowRect(window, C.byref(rect)):
+            raise RuntimeError('Cannot measure a missing Windows window')
+        return image.width / (rect.right - rect.left) * self.u.GetDpiForWindow(window) / 96.0
+
+    def click_capture(self, window, image, x, y):
         self.focus(window)
-        scale = self.u.GetDpiForWindow(window) / 96.0
-        point = self.W.POINT(round(x * scale), round(y * scale))
-        if not self.u.ClientToScreen(window, C.byref(point)):
-            raise RuntimeError('Cannot locate Windows native client coordinates')
-        self.u.SetCursorPos(point.x, point.y)
+        rect = self.W.RECT()
+        if not self.u.GetWindowRect(window, C.byref(rect)):
+            raise RuntimeError('Cannot locate a missing Windows window')
+        self.u.SetCursorPos(round(rect.left + x * (rect.right - rect.left) / image.width),
+                            round(rect.top + y * (rect.bottom - rect.top) / image.height))
         self.u.mouse_event(0x0002, 0, 0, 0, 0)
         self.u.mouse_event(0x0004, 0, 0, 0, 0)
         time.sleep(0.2)
@@ -220,14 +264,41 @@ class MacDesktop:
         if abs(bounds['Width'] - frame.size.width) > 1 or abs(bounds['Height'] - frame.size.height) > 1:
             raise RuntimeError('macOS did not apply the requested compact native viewport')
 
-    def click(self, window, x, y):
+    def image_scale(self, window, image):
+        return image.width / self.bounds(window)['Width']
+
+    def click_capture(self, window, image, x, y):
         self.focus(window)
         bounds = self.bounds(window)
-        content = self.appkit.NSWindow.contentRectForFrameRect_styleMask_(((0., 0.), (bounds['Width'], bounds['Height'])), 15)
-        left_inset = content.origin.x
-        top_inset = bounds['Height'] - content.origin.y - content.size.height
-        position = f"{{{round(bounds['X'] + left_inset + x)}, {round(bounds['Y'] + top_inset + y)}}}"
-        self.system_events('tell application "System Events" to click at ' + position)
+        # Screenshot pixels already include native titlebar/content offsets.
+        # Map the observed control directly into WindowServer screen points;
+        # do not add a guessed NSWindow titlebar height a second time.
+        screen_x = round(bounds['X'] + x * bounds['Width'] / image.width)
+        screen_y = round(bounds['Y'] + y * bounds['Height'] / image.height)
+        # System Events' accessibility click can succeed without producing an
+        # egui pointer event. Post real Quartz move/down/up events instead,
+        # from the same system osascript identity used by the runner's native
+        # automation permissions. No TCC database is changed.
+        script = f'''
+ObjC.import('CoreGraphics');
+ObjC.import('Foundation');
+const point = $.CGPointMake({screen_x}, {screen_y});
+const source = $.CGEventSourceCreate($.kCGEventSourceStateHIDSystemState);
+function post(kind) {{
+    const event = $.CGEventCreateMouseEvent(source, kind, point, $.kCGMouseButtonLeft);
+    $.CGEventSetIntegerValueField(event, $.kCGMouseEventClickState, 1);
+    $.CGEventPost($.kCGHIDEventTap, event);
+    $.NSThread.sleepForTimeInterval(0.08);
+}}
+post($.kCGEventMouseMoved);
+post($.kCGEventLeftMouseDown);
+post($.kCGEventLeftMouseUp);
+'''
+        result = subprocess.run(['/usr/bin/osascript', '-l', 'JavaScript', '-e', script],
+                                capture_output=True, timeout=10)
+        if result.returncode:
+            detail = result.stderr.decode('utf-8', errors='replace')[-1000:].strip()
+            raise RuntimeError('macOS native pointer injection failed: ' + detail)
         time.sleep(0.2)
 
     def focus(self, window):
@@ -275,10 +346,12 @@ def wait(application, operation, description, timeout=35):
 
 def settled(application, desktop, window, path, require_photo=False):
     previous, since = None, time.monotonic()
+    geometry_error = None
     def ready():
-        nonlocal previous, since
+        nonlocal previous, since, geometry_error
         image = desktop.capture(window)
-        if min(image.size) < 200 or len(set(image.resize((80, 60)).getdata())) < 20:
+        colors = image.resize((80, 60)).getcolors(maxcolors=20)
+        if min(image.size) < 200 or (colors is not None and len(colors) < 20):
             return False
         if require_photo and image.getcolors(maxcolors=3000) is not None:
             return False
@@ -292,9 +365,46 @@ def settled(application, desktop, window, path, require_photo=False):
             return False
         if time.monotonic() - since < 0.4:
             return False
+        if require_photo:
+            try:
+                photo_geometry((*image.size, image.convert('RGB').tobytes()), desktop.image_scale(window, image))
+            except RuntimeError as error:
+                if str(error) != geometry_error:
+                    geometry_error = str(error)
+                    image.save(path.with_name(path.stem + '-incomplete.png'))
+                return False
         image.save(path)
         return image
-    return wait(application, ready, 'real rendered ' + path.name)
+    try:
+        return wait(application, ready, 'real rendered ' + path.name)
+    except RuntimeError as error:
+        if geometry_error:
+            raise RuntimeError(f'{error}; last photo measurement: {geometry_error}') from error
+        raise
+
+
+def print_failure_logs(output):
+    """Keep the actual native startup error visible even if artifacts fail."""
+    for name in ('application-stderr.log', 'application-stdout.log'):
+        path = output / name
+        try:
+            with path.open('rb') as log:
+                log.seek(0, os.SEEK_END)
+                size = log.tell()
+                log.seek(max(0, size - 8192))
+                lines = log.read(8192).decode('utf-8', errors='replace').splitlines()
+            print(f'--- {name}: last 8 KiB / 60 lines ---', file=sys.stderr)
+            print('\n'.join(lines[-60:]).strip() or '(empty)', file=sys.stderr, flush=True)
+        except OSError as error:
+            print(f'Unable to read {name}: {type(error).__name__}', file=sys.stderr, flush=True)
+
+
+def compact_selected_tab(image, scale):
+    return selected_tab_geometry((*image.size, image.convert('RGB').tobytes()), scale)
+
+
+def compact_location_point(image, scale):
+    return compact_tab_points((*image.size, image.convert('RGB').tobytes()), scale)[2]
 
 
 def run(args):
@@ -305,6 +415,7 @@ def run(args):
     output.mkdir(parents=True, exist_ok=True)
     report = {'platform': sys.platform, 'real_native_windows': False, 'screenshots': [], 'status': 'failed'}
     application = desktop = None
+    primary_error = None
     try:
         oracle = PortableOracle()
         with tempfile.TemporaryDirectory(prefix='photopinfix-native-') as folder:
@@ -321,51 +432,75 @@ def run(args):
             env.pop('PHOTOPINFIX_GUI_CHILD', None)
             for name in ('PYTHONPATH', 'PYTHONHOME', 'PERL5LIB', 'PERL5OPT', 'PHOTOPINFIX_TEST_EXIFTOOL'):
                 env.pop(name, None)
-            with (output / 'application-stdout.log').open('wb') as stdout, (output / 'application-stderr.log').open('wb') as stderr:
-                application = subprocess.Popen([str(executable), '--gui', str(photos)], cwd=temporary, env=env, stdout=stdout, stderr=stderr)
-                desktop = (WindowsDesktop if sys.platform == 'win32' else MacDesktop)(application.pid, temporary)
-                main = wait(application, lambda: next(iter(desktop.windows()), None), 'native application window')
-                desktop.prepare(main)
-                settled(application, desktop, main, output / 'initial.png')
-                desktop.key('down', window=main)
-                overview = settled(application, desktop, main, output / 'overview.png', require_photo=True)
-                desktop.key('e', window=main)
-                editor = settled(application, desktop, main, output / 'gps-editor.png')
-                difference = ImageChops.difference(overview, editor).convert('L').point(lambda value: 255 if value > 12 else 0)
-                assert difference.histogram()[255] > overview.width * overview.height * 0.04, 'Editor shortcut did not visibly open its form'
-                desktop.key('escape', window=main)
-                settled(application, desktop, main, output / 'editor-closed.png', require_photo=True)
-                desktop.key('o', command=True, window=main)
-                native = wait(application, lambda: desktop.native_dialog(main), 'OS-native folder dialog or attached sheet')
-                desktop.focus(native)
-                settled(application, desktop, native, output / 'native-folder-dialog.png')
-                desktop.key('escape', window=native)
-                wait(application, lambda: desktop.native_dialog(main) is None, 'native folder dialog cancellation')
-                desktop.resize(main, 880, 640)
-                compact = settled(application, desktop, main, output / 'compact-photo.png', require_photo=True)
-                desktop.click(main, 520, 285)
-                location = settled(application, desktop, main, output / 'compact-location.png')
-                difference = ImageChops.difference(compact, location).convert('L').point(lambda value: 255 if value > 12 else 0)
-                assert difference.histogram()[255] > compact.width * compact.height * 0.04, 'Compact location tab did not visibly replace the photo view'
-                desktop.key('q', command=True, window=main)
-                assert application.wait(timeout=20) == 0, 'GUI exit was unsuccessful'
-                for path in paths:
-                    assert snapshot(path) == expected_times[path], 'Browsing changed photo timestamps/identity'
-                    assert preserved_read(path, path.read_bytes) == original[path], 'Browsing changed photo data'
-                report.update(real_native_windows=True, status='success', native_picker_cancelled=True,
-                              empty_path=True, untouched_photos=True,
-                              screenshots=['overview.png', 'gps-editor.png', 'native-folder-dialog.png', 'compact-photo.png', 'compact-location.png'])
+            if args.windows_opengl_dir:
+                report['test_opengl'] = windows_test_opengl(args.windows_opengl_dir, temporary, env)
+            try:
+                with (output / 'application-stdout.log').open('wb') as stdout, (output / 'application-stderr.log').open('wb') as stderr:
+                    application = subprocess.Popen([str(executable), '--gui', str(photos)], cwd=temporary, env=env, stdout=stdout, stderr=stderr)
+                    desktop = (WindowsDesktop if sys.platform == 'win32' else MacDesktop)(application.pid, temporary)
+                    main = wait(application, lambda: next(iter(desktop.windows()), None), 'native application window')
+                    desktop.prepare(main)
+                    settled(application, desktop, main, output / 'initial.png')
+                    desktop.key('down', window=main)
+                    overview = settled(application, desktop, main, output / 'overview.png', require_photo=True)
+                    report['photo_geometry'] = {'overview': photo_geometry(
+                        (*overview.size, overview.convert('RGB').tobytes()), desktop.image_scale(main, overview))}
+                    desktop.key('e', window=main)
+                    editor = settled(application, desktop, main, output / 'gps-editor.png')
+                    difference = ImageChops.difference(overview, editor).convert('L').point(lambda value: 255 if value > 12 else 0)
+                    assert difference.histogram()[255] > overview.width * overview.height * 0.04, 'Editor shortcut did not visibly open its form'
+                    desktop.key('escape', window=main)
+                    settled(application, desktop, main, output / 'editor-closed.png', require_photo=True)
+                    desktop.key('o', command=True, window=main)
+                    native = wait(application, lambda: desktop.native_dialog(main), 'OS-native folder dialog or attached sheet')
+                    desktop.focus(native)
+                    settled(application, desktop, native, output / 'native-folder-dialog.png')
+                    desktop.key('escape', window=native)
+                    wait(application, lambda: desktop.native_dialog(main) is None, 'native folder dialog cancellation')
+                    desktop.resize(main, 880, 640)
+                    compact = settled(application, desktop, main, output / 'compact-photo.png', require_photo=True)
+                    scale = desktop.image_scale(main, compact)
+                    report['photo_geometry']['compact'] = photo_geometry((*compact.size, compact.convert('RGB').tobytes()), scale)
+                    point = compact_location_point(compact, scale)
+                    report['compact_click'] = {'image_pixels': list(point), 'pixels_per_point': scale, 'image_size': list(compact.size)}
+                    desktop.click_capture(main, compact, *point)
+                    location = settled(application, desktop, main, output / 'compact-location.png')
+                    x1, y1, x2, y2 = compact_selected_tab(location, scale)
+                    assert x1 <= point[0] <= x2 and y1 <= point[1] <= y2, 'The location tab did not become visibly selected'
+                    difference = ImageChops.difference(compact, location).convert('L').point(lambda value: 255 if value > 12 else 0)
+                    assert difference.histogram()[255] > compact.width * compact.height * 0.04, 'Compact location tab did not visibly replace the photo view'
+                    desktop.key('q', command=True, window=main)
+                    assert application.wait(timeout=20) == 0, 'GUI exit was unsuccessful'
+                    for path in paths:
+                        assert snapshot(path) == expected_times[path], 'Browsing changed photo timestamps/identity'
+                        assert preserved_read(path, path.read_bytes) == original[path], 'Browsing changed photo data'
+                    report.update(real_native_windows=True, status='success', native_picker_cancelled=True,
+                                  empty_path=True, untouched_photos=True,
+                                  screenshots=['overview.png', 'gps-editor.png', 'native-folder-dialog.png', 'compact-photo.png', 'compact-location.png'])
+            except BaseException as error:
+                primary_error = error
+                raise
+            finally:
+                # Windows locks the copied executable and Mesa DLLs while the
+                # process runs. Release them before TemporaryDirectory exits.
+                if application and application.poll() is None:
+                    application.terminate()
+                    try:
+                        application.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        application.kill()
+                        application.wait(timeout=5)
     except Exception as error:
+        report['status'] = 'failed'
+        if primary_error is not None and error is not primary_error:
+            report['cleanup_error'] = str(error)
+            report['error'] = str(primary_error)
+            print_failure_logs(output)
+            raise primary_error from error
         report['error'] = str(error)
+        print_failure_logs(output)
         raise
     finally:
-        if application and application.poll() is None:
-            application.terminate()
-            try:
-                application.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                application.kill()
-                application.wait()
         (output / 'capture-report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
         print(json.dumps(report, indent=2, ensure_ascii=False), flush=True)
 
@@ -374,4 +509,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('binary')
     parser.add_argument('--output', default=str(ROOT / 'target/native-screenshots'))
+    parser.add_argument('--windows-opengl-dir', help='Explicit CI-only directory of manifest-verified Windows software OpenGL DLLs')
     run(parser.parse_args())

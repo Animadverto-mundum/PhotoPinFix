@@ -96,13 +96,39 @@ python scripts/capture_native_gui.py path/to/photopinfix --output target/native-
 
 On Windows use the `.exe` path. The development harness needs Pillow and the
 independent Perl/ExifTool oracle. macOS additionally uses
-`pyobjc-framework-Quartz` and `pyobjc-framework-Cocoa`; it sends input through
-the system `osascript`/System Events and captures the actual window's screen
+`pyobjc-framework-Quartz` and `pyobjc-framework-Cocoa`; it sends keys through
+the system `osascript`/System Events and posts actual Quartz mouse events from
+`osascript`. It captures the actual window's screen
 region with `screencapture`. It never edits privacy-permission databases. The
 runner must provide an interactive desktop and permit native automation and
 screen capture. Missing permissions cause an explicit failure report, not a
 synthetic image or a successful skip. Windows uses native Win32 window/input
 APIs and real desktop captures.
+
+The standard Windows runner's built-in OpenGL implementation is too old for
+`egui_glow`. Windows CI therefore prepares a **test-only** LLVMpipe driver:
+
+```powershell
+./scripts/prepare_windows_gui_test.ps1
+python scripts/capture_native_gui.py path/to/photopinfix.exe --output target/native-screenshots --windows-opengl-dir tools/gui-test/mesa-x64
+```
+
+The preparation script pins the published
+[Mesa 25.1.9 MSVC archive](https://github.com/pal1000/mesa-dist-win/releases/tag/25.1.9)
+and verifies its SHA256 against the value published with that release before
+extracting the required x64 DLLs. It checks their PE architecture and import
+dependencies without loading them. The fixed DLL set is `opengl32.dll` and
+`libgallium_wgl.dll`; the latter's imports are Windows system libraries, so no
+separate LLVM, OpenCL or Vulkan runtime is needed. Both DLL hashes are also
+pinned in the preparation script. The capture harness verifies the generated
+manifest and each DLL again, then places those DLLs beside its disposable copy
+of the executable and selects `llvmpipe`; the application's PATH remains empty.
+`capture-report.json` identifies this software-rendering test environment. The
+driver is never installed system-wide, never changes the product's renderer,
+and is never copied into the app or corresponding-source packages. This follows
+[Mesa's per-application Windows deployment](https://docs.mesa3d.org/drivers/llvmpipe.html#windows).
+The screenshot proves rendering on this CI software driver; it does not prove
+compatibility with every user's Windows graphics driver.
 
 The capture sequence records a public landscape photo, the coordinate editor,
 and the OS-native folder dialog (COM on Windows, NSOpenPanel on macOS), then
@@ -112,6 +138,13 @@ macOS attached sheets through the actual accessibility tree as well as separate
 windows. The copied application runs outside the checkout with an empty PATH.
 These captures exercise real rendering and picker cancellation; they do not
 replace platform-specific detached-launch or confirmed-write acceptance.
+
+Both capture harnesses locate compact tabs in the unmodified screenshot and
+verify that a real click selects the intended view. The shared `gui_visual.py`
+also measures the preview canvas and actual photo pixels: an opened window
+containing only a tiny thumbnail or a loading label fails visual acceptance.
+Reports record those dimensions in logical points. These geometry checks
+support, and do not replace, visual review of typography, spacing and clipping.
 
 All three CI jobs upload `photopinfix-<target>-gui-screenshots`; the original
 Linux desktop/TUI screenshot artifact remains available. `capture-report.json`

@@ -11,7 +11,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use crate::gui_theme::{META, MUTED, TEXT, TITLE};
+use crate::gui_theme::{META, MUTED, TEXT};
 use eframe::egui::{
     self, Align2, Color32, ColorImage, FontId, Pos2, Rect, RichText, Sense, Stroke, TextureHandle,
     TextureOptions, Vec2,
@@ -143,7 +143,7 @@ impl GuiMap {
             ui.spacing_mut().button_padding = Vec2::new(7.0, 3.0);
             ui.spacing_mut().item_spacing = Vec2::new(5.0, 6.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("位置分布").size(TITLE).strong().color(INK));
+                ui.label(RichText::new("位置分布").size(TEXT).strong().color(INK));
                 ui.label(
                     RichText::new(points.len().to_string())
                         .size(META)
@@ -190,7 +190,8 @@ impl GuiMap {
         let available = ui.available_size();
         // Leave room for one status line. Attribution is painted, wrapping as
         // needed, inside the map and remains visible while a new view loads.
-        let size = Vec2::new(available.x.max(1.0), (available.y - 22.0).max(1.0));
+        let status_height = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+        let size = Vec2::new(available.x.max(1.0), (available.y - status_height).max(1.0));
         let (rect, response) = ui.allocate_exact_size(size, Sense::drag());
         let render_size = image_size(size, ui.ctx().pixels_per_point());
         if response.dragged() {

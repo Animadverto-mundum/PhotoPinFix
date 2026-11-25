@@ -229,10 +229,20 @@ jobs:
       - name: Install macOS native-window capture bindings
         if: runner.os == 'macOS' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
         run: python -m pip install pyobjc-framework-Quartz pyobjc-framework-Cocoa
+      - name: Prepare software OpenGL for Windows screenshot tests only
+        if: runner.os == 'Windows' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
+        shell: pwsh
+        run: ./scripts/prepare_windows_gui_test.ps1
       - name: Capture real Windows or macOS desktop and native folder dialog
         id: native_screenshots
         if: runner.os != 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
-        run: python scripts/capture_native_gui.py ./target/${{ matrix.target }}/release/photopinfix${{ matrix.extension }} --output target/native-screenshots
+        shell: bash
+        run: |
+          extra=()
+          if [[ '${{ runner.os }}' == 'Windows' ]]; then
+            extra+=(--windows-opengl-dir tools/gui-test/mesa-x64)
+          fi
+          python scripts/capture_native_gui.py ./target/${{ matrix.target }}/release/photopinfix${{ matrix.extension }} --output target/native-screenshots "${extra[@]}"
       - name: Retain native screenshots and capture diagnostics for this platform
         if: always() && (steps.gui.outcome == 'success' || steps.gui_launch.outcome == 'success' || steps.native_screenshots.outcome == 'success' || steps.native_screenshots.outcome == 'failure')
         uses: actions/upload-artifact@v7
