@@ -209,7 +209,18 @@ fn standalone_metadata_child() {
                 }
             },
         };
-        tool.write_gps(&path, &candidate).unwrap();
+        let keep_backup = index % 2 == 0;
+        let outcome = if keep_backup {
+            tool.write_gps_with_backup(&path, &candidate, true)
+        } else {
+            tool.write_gps(&path, &candidate)
+        }
+        .unwrap();
+        assert!(
+            outcome.warning.is_none(),
+            "{extension}: {:?}",
+            outcome.warning
+        );
         assert_eq!(
             Times::read(&path),
             times,
@@ -239,11 +250,18 @@ fn standalone_metadata_child() {
         );
         let backup =
             path.with_file_name(format!("照片 with spaces.{extension}.photopinfix-original"));
-        assert_eq!(
-            fs::read(backup).unwrap(),
-            original_bytes,
-            "{extension}: original backup differs"
-        );
+        if keep_backup {
+            assert_eq!(
+                fs::read(backup).unwrap(),
+                original_bytes,
+                "{extension}: original backup differs"
+            );
+        } else {
+            assert!(
+                !backup.exists(),
+                "{extension}: default write retained a backup"
+            );
+        }
         let written_bytes = read_preserving_access(&path);
         assert!(
             tool.write_gps(&path, &candidate).is_err(),
@@ -252,7 +270,7 @@ fn standalone_metadata_child() {
         assert_eq!(read_preserving_access(&path), written_bytes);
         assert_eq!(Times::read(&path), times);
         println!(
-            "PASS {extension}: scan, preview, GPS/custom XMP, original backup, timestamps/identity, existing-GPS refusal; empty PATH and Chinese/spaces"
+            "PASS {extension}: scan, preview, GPS/custom XMP, keep_backup={keep_backup}, timestamps/identity, existing-GPS refusal; empty PATH and Chinese/spaces"
         );
     }
     println!(

@@ -1,6 +1,6 @@
 use photopinfix::{
     map::{self, MapPoint, MapRenderer, MapResult, MapScale, MapView},
-    metadata::{MetadataTool, ScanResult},
+    metadata::{MetadataTool, ScanResult, WriteOutcome},
     model::Candidate,
     preview,
 };
@@ -24,8 +24,8 @@ pub enum Response {
     Scan(u64, Result<ScanResult, String>),
     Photo(u64, Result<Protocol, String>),
     Map(u64, MapResult),
-    Written(u64, usize, Candidate, Result<(), String>),
-    WriteFinished(u64, usize, usize),
+    Written(u64, usize, Candidate, Result<WriteOutcome, String>),
+    WriteFinished(u64, usize, usize, usize),
 }
 
 pub struct PhotoRequest {
@@ -218,6 +218,7 @@ impl Workers {
         generation: u64,
         tool: MetadataTool,
         items: Vec<(usize, PathBuf, Candidate)>,
+        keep_original_backup: bool,
     ) {
         let tx = self.tx.clone();
         let io = self.io.clone();
@@ -227,10 +228,12 @@ impl Workers {
             let _guard = io.lock.lock().unwrap_or_else(|e| e.into_inner());
             let total = items.len();
             let mut success = 0;
+            let mut warnings = 0;
             for (index, path, candidate) in items {
-                let result = tool.write_gps(&path, &candidate);
-                if result.is_ok() {
+                let result = tool.write_gps_with_backup(&path, &candidate, keep_original_backup);
+                if let Ok(outcome) = &result {
                     success += 1;
+                    warnings += usize::from(outcome.warning.is_some());
                 }
                 if tx
                     .send(Response::Written(generation, index, candidate, result))
@@ -239,7 +242,9 @@ impl Workers {
                     return;
                 }
             }
-            let _ = tx.send(Response::WriteFinished(generation, success, total));
+            let _ = tx.send(Response::WriteFinished(
+                generation, success, total, warnings,
+            ));
         }));
     }
 

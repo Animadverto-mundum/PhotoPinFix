@@ -156,8 +156,20 @@ fn write_and_verify_copy(
         .to_rgba8();
     before.assert_unchanged(&destination, "preview before GPS write");
 
-    tool.write_gps(&destination, &candidate)
+    let outcome = tool
+        .write_gps(&destination, &candidate)
         .unwrap_or_else(|error| panic!("{filename} real GPS write failed: {error}"));
+    assert!(
+        outcome.warning.is_none(),
+        "{filename}: {:?}",
+        outcome.warning
+    );
+    let mut backup_name = destination.file_name().unwrap().to_os_string();
+    backup_name.push(".photopinfix-original");
+    assert!(
+        !destination.with_file_name(backup_name).exists(),
+        "{filename}: default write retained a backup"
+    );
     before.assert_unchanged(&destination, "GPS write");
     let rescanned = tool.scan_directory(directory).unwrap();
     let updated = rescanned

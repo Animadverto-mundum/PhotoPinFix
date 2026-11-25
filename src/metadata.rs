@@ -57,6 +57,12 @@ pub struct ScanResult {
     pub warnings: Vec<String>,
 }
 
+/// A verified write can succeed while its optional backup cleanup needs attention.
+#[derive(Default, Debug)]
+pub struct WriteOutcome {
+    pub warning: Option<String>,
+}
+
 #[derive(Debug)]
 struct Metadata {
     captured_at: Option<NaiveDateTime>,
@@ -302,6 +308,12 @@ fn file_identity(file: &File) -> Result<FileIdentity, String> {
     }
 }
 
+fn commit_staged_contents(staged: &mut File, writer: &mut File, length: u64) -> Result<(), String> {
+    std::io::copy(staged, writer).map_err(|e| format!("写入照片失败：{e}"))?;
+    writer.set_len(length).map_err(|e| e.to_string())?;
+    writer.sync_all().map_err(|e| e.to_string())
+}
+
 impl MetadataTool {
     /// Initialize the compiled-in engine and its private field definitions.
     /// No executable lookup, external interpreter, or system installation is needed.
@@ -472,8 +484,39 @@ impl MetadataTool {
 
     /// Stage and validate metadata before overwriting the original file through
     /// its existing handle. Keeping the inode preserves creation/birth time.
-    /// The original bytes are retained as <filename>.photopinfix-original.
-    pub fn write_gps(&self, path: &Path, candidate: &Candidate) -> Result<(), String> {
+    /// The recovery backup is removed only after verification and time restore.
+    pub fn write_gps(&self, path: &Path, candidate: &Candidate) -> Result<WriteOutcome, String> {
+        self.write_gps_with_backup(path, candidate, false)
+    }
+
+    /// Optionally retain <filename>.photopinfix-original after a successful write.
+    /// Failures retain any backup created by this attempt. An existing backup is
+    /// never overwritten or removed, even when retention is disabled.
+    pub fn write_gps_with_backup(
+        &self,
+        path: &Path,
+        candidate: &Candidate,
+        keep_original_backup: bool,
+    ) -> Result<WriteOutcome, String> {
+        self.write_gps_with_io(
+            path,
+            candidate,
+            keep_original_backup,
+            commit_staged_contents,
+            |backup| fs::remove_file(backup),
+        )
+    }
+
+    // Separate the two fallible filesystem mutations so tests can exercise a
+    // partial commit and denied deletion deterministically on every platform.
+    fn write_gps_with_io(
+        &self,
+        path: &Path,
+        candidate: &Candidate,
+        keep_original_backup: bool,
+        commit: impl FnOnce(&mut File, &mut File, u64) -> Result<(), String>,
+        remove_backup: impl FnOnce(&Path) -> std::io::Result<()>,
+    ) -> Result<WriteOutcome, String> {
         if !valid_coordinates(candidate.coordinates) {
             return Err("GPS 坐标超出范围或不是有限数字".into());
         }
@@ -496,6 +539,7 @@ impl MetadataTool {
         let snapshot = TimeSnapshot::capture(&source, &source_info)?;
         let mut original_changed = false;
         let mut backup_path = None;
+        let mut backup_identity = None;
         let result = (|| -> Result<(), String> {
             snapshot.check_unchanged(&source, &path)?;
             let before = self.read_one(&path)?;
@@ -567,6 +611,10 @@ impl MetadataTool {
                 .create_new(true)
                 .open(&backup)
                 .map_err(|e| format!("无法创建原图备份 {}：{e}；原文件未修改", backup.display()))?;
+            // Record ownership immediately. Even a failed copy must leave its
+            // recovery evidence intact; only a fully successful write cleans up.
+            backup_path = Some(backup);
+            backup_identity = Some(file_identity(&backup_file)?);
             let backup_result = (|| -> std::io::Result<()> {
                 source.rewind()?;
                 std::io::copy(&mut source, &mut backup_file)?;
@@ -574,10 +622,10 @@ impl MetadataTool {
             })();
             drop(backup_file);
             if let Err(error) = backup_result {
-                let _ = fs::remove_file(&backup);
-                return Err(format!("原图备份失败，原文件未修改：{error}"));
+                return Err(format!(
+                    "原图备份失败，备份可能不完整，原文件未修改：{error}"
+                ));
             }
-            backup_path = Some(backup);
             // Check identity, size and modification time after backup too.
             snapshot.check_unchanged(&source, &path)?;
             // ExifTool replaced the staged inode, so reopen its pathname. Never
@@ -594,10 +642,7 @@ impl MetadataTool {
             snapshot.check_unchanged(&writer, &path)?;
             writer.rewind().map_err(|e| e.to_string())?;
             original_changed = true;
-            std::io::copy(&mut staged_file, &mut writer)
-                .map_err(|e| format!("写入照片失败：{e}"))?;
-            writer.set_len(staged_length).map_err(|e| e.to_string())?;
-            writer.sync_all().map_err(|e| e.to_string())?;
+            commit(&mut staged_file, &mut writer, staged_length)?;
             snapshot.check_identity_and_creation(&writer, &path)?;
             drop(writer);
             // Validate the actual original, before the final timestamp restore.
@@ -617,6 +662,9 @@ impl MetadataTool {
             let rollback = (|| -> Result<(), String> {
                 snapshot.check_identity_and_creation(&source, &path)?;
                 let mut original = File::open(backup).map_err(|e| e.to_string())?;
+                if Some(file_identity(&original)?) != backup_identity {
+                    return Err("备份文件身份已改变，无法安全恢复原文件".into());
+                }
                 let mut writer = OpenOptions::new()
                     .read(true)
                     .write(true)
@@ -660,8 +708,34 @@ impl MetadataTool {
             Err(error) => problems.push(format!("无法打开文件恢复时间：{error}")),
         }
         if problems.is_empty() {
-            Ok(())
+            let mut outcome = WriteOutcome::default();
+            if !keep_original_backup && let Some(backup) = backup_path {
+                let cleanup = (|| -> Result<(), String> {
+                    let info = fs::symlink_metadata(&backup).map_err(|e| e.to_string())?;
+                    if !info.is_file() || info.file_type().is_symlink() {
+                        return Err("备份路径已被替换，已停止清理".into());
+                    }
+                    let handle = attribute_handle(&backup).map_err(|e| e.to_string())?;
+                    if Some(file_identity(&handle)?) != backup_identity {
+                        return Err("备份文件身份已改变，已停止清理".into());
+                    }
+                    // Close before unlinking so Windows sharing rules do not
+                    // turn every successful write into a cleanup warning.
+                    drop(handle);
+                    remove_backup(&backup).map_err(|e| e.to_string())
+                })();
+                if let Err(error) = cleanup {
+                    outcome.warning = Some(format!(
+                        "照片已成功写入并校验，备份未删除：{}；{error}",
+                        backup.display()
+                    ));
+                }
+            }
+            Ok(outcome)
         } else {
+            if let Some(backup) = backup_path {
+                problems.push(format!("本次备份保留在 {}", backup.display()));
+            }
             Err(problems.join("；"))
         }
     }
@@ -1295,7 +1369,8 @@ mod tests {
                 method: Method::CoordinateInput,
             },
         };
-        tool.write_gps(&path, &candidate).unwrap();
+        let outcome = tool.write_gps_with_backup(&path, &candidate, true).unwrap();
+        assert!(outcome.warning.is_none());
         let metadata = tool.read_one(&path).unwrap();
         assert!((metadata.gps.unwrap().lat - candidate.coordinates.lat).abs() < 1e-7);
         assert_eq!(metadata.provenance.unwrap().mode, Mode::Manual);
@@ -1418,12 +1493,15 @@ mod tests {
     #[test]
     fn jpeg_and_png_keep_creation_modification_access_times_and_file_identity() {
         let tool = MetadataTool::discover().unwrap();
-        for extension in ["jpg", "png"] {
+        for (extension, keep_backup) in
+            [("jpg", false), ("png", false), ("jpg", true), ("png", true)]
+        {
             let directory = tempfile::tempdir().unwrap();
             let path = directory.path().join(format!("photo.{extension}"));
             image::RgbImage::from_pixel(4, 4, image::Rgb([100, 150, 200]))
                 .save(&path)
                 .unwrap();
+            let original = fs::read(&path).unwrap();
             let before = set_fixture_times(&path);
             let candidate = Candidate {
                 coordinates: Coordinates {
@@ -1435,8 +1513,25 @@ mod tests {
                     method: Method::TimeInterpolation,
                 },
             };
-            tool.write_gps(&path, &candidate).unwrap();
+            let outcome = if keep_backup {
+                tool.write_gps_with_backup(&path, &candidate, true)
+            } else {
+                tool.write_gps(&path, &candidate)
+            }
+            .unwrap();
+            assert!(outcome.warning.is_none());
             assert_fixture_times(&path, &before);
+            let backup = directory
+                .path()
+                .join(format!("photo.{extension}.photopinfix-original"));
+            if keep_backup {
+                assert_eq!(fs::read(&backup).unwrap(), original);
+            } else {
+                assert!(
+                    !backup.exists(),
+                    "successful default write left its recovery backup"
+                );
+            }
             assert!(tool.read_one(&path).unwrap().gps.is_some());
             assert_fixture_times(&path, &before);
             let scanned = tool.scan_directory(directory.path()).unwrap();
@@ -1485,11 +1580,164 @@ mod tests {
                 method: Method::CoordinateInput,
             },
         };
-        assert!(tool.write_gps(&path, &candidate).is_err());
+        for keep_backup in [false, true] {
+            assert!(
+                tool.write_gps_with_backup(&path, &candidate, keep_backup)
+                    .is_err()
+            );
+            assert_fixture_times(&path, &before);
+            let after =
+                with_preserved_access(&[&path], || fs::read(&path).map_err(|e| e.to_string()))
+                    .unwrap();
+            assert_eq!(after, content);
+            assert_fixture_times(&path, &before);
+            assert_eq!(
+                fs::read(directory.path().join("photo.png.photopinfix-original")).unwrap(),
+                b"existing backup",
+                "a prior backup must never be overwritten or removed"
+            );
+        }
+    }
+
+    fn backup_test_candidate() -> Candidate {
+        Candidate {
+            coordinates: Coordinates {
+                lat: -33.5,
+                lon: -70.25,
+            },
+            provenance: Provenance {
+                mode: Mode::Manual,
+                method: Method::CoordinateInput,
+            },
+        }
+    }
+
+    #[test]
+    fn failed_commit_or_verification_retains_backup_and_restores_original() {
+        let tool = MetadataTool::discover().unwrap();
+        for commit_returns_error in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("photo.png");
+            image::RgbImage::from_pixel(4, 4, image::Rgb([100, 150, 200]))
+                .save(&path)
+                .unwrap();
+            let original = fs::read(&path).unwrap();
+            let before = set_fixture_times(&path);
+            let result = tool.write_gps_with_io(
+                &path,
+                &backup_test_candidate(),
+                false,
+                |_, writer, _| {
+                    writer
+                        .write_all(b"partial bad")
+                        .map_err(|e| e.to_string())?;
+                    writer.set_len(11).map_err(|e| e.to_string())?;
+                    writer.sync_all().map_err(|e| e.to_string())?;
+                    if commit_returns_error {
+                        Err("injected partial commit failure".into())
+                    } else {
+                        // A successful write syscall with invalid data must be
+                        // rejected by the actual read-back verification.
+                        Ok(())
+                    }
+                },
+                |_| panic!("failed writes must never delete their recovery backup"),
+            );
+            let error = result.unwrap_err();
+            assert!(error.contains("已从备份恢复原文件内容"), "{error}");
+            assert!(error.contains("本次备份保留在"), "{error}");
+            assert_fixture_times(&path, &before);
+            assert_eq!(
+                with_preserved_access(&[&path], || fs::read(&path).map_err(|e| e.to_string()))
+                    .unwrap(),
+                original
+            );
+            assert!(tool.read_one(&path).unwrap().gps.is_none());
+            assert_fixture_times(&path, &before);
+            assert_eq!(
+                fs::read(directory.path().join("photo.png.photopinfix-original")).unwrap(),
+                original
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_failure_is_a_warning_after_a_verified_time_preserving_write() {
+        let tool = MetadataTool::discover().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("photo.png");
+        image::RgbImage::from_pixel(4, 4, image::Rgb([100, 150, 200]))
+            .save(&path)
+            .unwrap();
+        let original = fs::read(&path).unwrap();
+        let before = set_fixture_times(&path);
+        let candidate = backup_test_candidate();
+        let outcome = tool
+            .write_gps_with_io(&path, &candidate, false, commit_staged_contents, |_| {
+                assert_fixture_times(&path, &before);
+                assert_eq!(
+                    tool.read_one(&path).unwrap().provenance,
+                    Some(candidate.provenance)
+                );
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected denied deletion",
+                ))
+            })
+            .expect("backup cleanup failure must not report a successful GPS write as failed");
+        let warning = outcome
+            .warning
+            .expect("backup cleanup failure needs a visible warning");
+        assert!(
+            warning.contains("照片已成功写入并校验，备份未删除"),
+            "{warning}"
+        );
+        assert!(
+            warning.contains("photo.png.photopinfix-original"),
+            "{warning}"
+        );
         assert_fixture_times(&path, &before);
-        let after =
-            with_preserved_access(&[&path], || fs::read(&path).map_err(|e| e.to_string())).unwrap();
-        assert_eq!(after, content);
+        assert_eq!(
+            tool.read_one(&path).unwrap().gps,
+            Some(candidate.coordinates)
+        );
         assert_fixture_times(&path, &before);
+        assert_eq!(
+            fs::read(directory.path().join("photo.png.photopinfix-original")).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn cleanup_never_deletes_a_backup_path_replaced_by_another_file() {
+        let tool = MetadataTool::discover().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("photo.png");
+        let backup = directory.path().join("photo.png.photopinfix-original");
+        let moved_backup = directory.path().join("preserved-original.bin");
+        image::RgbImage::from_pixel(4, 4, image::Rgb([100, 150, 200]))
+            .save(&path)
+            .unwrap();
+        let original = fs::read(&path).unwrap();
+        let before = set_fixture_times(&path);
+        let outcome = tool
+            .write_gps_with_io(
+                &path,
+                &backup_test_candidate(),
+                false,
+                |staged, writer, length| {
+                    commit_staged_contents(staged, writer, length)?;
+                    fs::rename(&backup, &moved_backup).map_err(|e| e.to_string())?;
+                    fs::write(&backup, b"a different backup").map_err(|e| e.to_string())
+                },
+                |_| panic!("cleanup must not remove somebody else's replacement file"),
+            )
+            .unwrap();
+        assert!(outcome.warning.unwrap().contains("备份文件身份已改变"));
+        assert_fixture_times(&path, &before);
+        assert!(tool.read_one(&path).unwrap().gps.is_some());
+        assert_fixture_times(&path, &before);
+        assert_eq!(fs::read(backup).unwrap(), b"a different backup");
+        assert_eq!(fs::read(moved_backup).unwrap(), original);
     }
 }

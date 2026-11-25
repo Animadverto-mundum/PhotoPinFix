@@ -167,12 +167,15 @@ jobs:
         run: |
           python -m pip install pexpect pyte
           python scripts/check_tui.py ./target/${{ matrix.target }}/release/photopinfix
+          python scripts/check_tui.py ./target/${{ matrix.target }}/release/photopinfix --keep-original-backup --artifacts target/tui-keep-backup
       - name: Retain terminal failure diagnostics
         if: failure() && steps.tui.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: photopinfix-${{ matrix.target }}-tui-diagnostics
-          path: target/test-artifacts/tui-*
+          path: |
+            target/test-artifacts/tui-*
+            target/tui-keep-backup/*
           if-no-files-found: warn
           retention-days: 7
       - name: Native desktop window and confirmed writes without runtime helpers
@@ -180,7 +183,9 @@ jobs:
         if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
-        run: python scripts/check_gui.py ./target/${{ matrix.target }}/release/photopinfix --screenshots target/readme-screenshots
+        run: |
+          python scripts/check_gui.py ./target/${{ matrix.target }}/release/photopinfix --screenshots target/readme-screenshots
+          python scripts/check_gui.py ./target/${{ matrix.target }}/release/photopinfix --keep-original-backup --artifacts target/gui-keep-backup
       - name: Capture the real terminal window from this build
         id: tui_screenshot
         if: runner.os == 'Linux' && (github.event_name != 'workflow_dispatch' || inputs.fixtures)
@@ -209,7 +214,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: photopinfix-${{ matrix.target }}-gui-diagnostics
-          path: target/test-artifacts/gui-*
+          path: |
+            target/test-artifacts/gui-*
+            target/gui-keep-backup/*
           if-no-files-found: warn
           retention-days: 7
       - name: Detached desktop launcher and welcome folder selection
@@ -252,6 +259,8 @@ jobs:
             target/readme-screenshots/*.png
             target/test-artifacts/gui-launch-02-native-folder-picker.png
             target/test-artifacts/gui-12*.png
+            target/test-artifacts/gui-settings-*.png
+            target/test-artifacts/gui-13b-minimum-settings.png
             target/native-screenshots/*
           if-no-files-found: error
           retention-days: 7

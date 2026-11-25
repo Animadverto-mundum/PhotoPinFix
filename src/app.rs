@@ -15,7 +15,7 @@ use crossterm::{
 use photopinfix::{
     coordinates::{CoordinateFormat, CoordinateNotation, format_coordinate, parse_coordinate},
     map::{self, MapPoint, MapScale, MapView},
-    metadata::MetadataTool,
+    metadata::{MetadataTool, WriteOutcome},
     model::{
         Candidate, Coordinates, Method, Mode, Photo, PhotoStats, Provenance, Session, Settings,
     },
@@ -58,6 +58,7 @@ pub enum Modal {
         fields: [TextInput; 2],
         focus: usize,
         format: CoordinateFormat,
+        keep_original_backup: bool,
         error: String,
     },
     Edit {
@@ -71,6 +72,7 @@ pub enum Modal {
     Confirm {
         indices: Vec<usize>,
         confirm: bool,
+        keep_original_backup: bool,
     },
     Leave {
         action: PendingAction,
@@ -500,33 +502,18 @@ impl App {
                 Response::Written(generation, index, candidate, result)
                     if generation == self.directory_generation =>
                 {
-                    match result {
-                        Ok(()) => {
-                            let photo = &mut self.photos[index];
-                            photo.gps = Some(candidate.coordinates);
-                            photo.provenance = Some(candidate.provenance);
-                            photo.candidate = None;
-                            photo.error = None;
-                        }
-                        Err(error) => {
-                            self.issues.push(format!(
-                                "{}: {}",
-                                self.photos[index].path.display(),
-                                error
-                            ));
-                            self.photos[index].error = Some(error);
-                        }
+                    if let Some(issue) =
+                        apply_write_result(&mut self.photos[index], candidate, result)
+                    {
+                        self.issues.push(issue);
                     }
                     self.map_dirty = true;
                 }
-                Response::WriteFinished(generation, success, total)
+                Response::WriteFinished(generation, success, total, warnings)
                     if generation == self.directory_generation =>
                 {
                     self.writing = false;
-                    self.status = format!(
-                        "写入完成：成功 {success}/{total}；失败 {}（v 查看详情）",
-                        total - success
-                    );
+                    self.status = write_summary(success, total, warnings);
                 }
                 _ => continue,
             }
@@ -687,6 +674,7 @@ impl App {
         self.modal = Some(Modal::Confirm {
             indices,
             confirm: false,
+            keep_original_backup: self.settings.keep_original_backup,
         });
         self.clear = true;
     }
@@ -806,6 +794,7 @@ impl App {
                     .map(TextInput::from),
                     focus: 0,
                     format: self.coordinate_format,
+                    keep_original_backup: self.settings.keep_original_backup,
                     error: String::new(),
                 });
                 self.clear = true;
@@ -885,6 +874,7 @@ impl App {
             Modal::Confirm {
                 indices,
                 mut confirm,
+                keep_original_backup,
             } => {
                 if matches!(key.code, KeyCode::Tab | KeyCode::Left | KeyCode::Right) {
                     confirm = !confirm;
@@ -900,10 +890,18 @@ impl App {
                         .collect();
                     self.writing = true;
                     self.status = "正在写入并校验文件…".into();
-                    self.workers
-                        .write(self.directory_generation, self.tool.clone(), items);
+                    self.workers.write(
+                        self.directory_generation,
+                        self.tool.clone(),
+                        items,
+                        keep_original_backup,
+                    );
                 } else if !matches!(key.code, KeyCode::Enter | KeyCode::Char('n')) {
-                    self.modal = Some(Modal::Confirm { indices, confirm });
+                    self.modal = Some(Modal::Confirm {
+                        indices,
+                        confirm,
+                        keep_original_backup,
+                    });
                 }
             }
             Modal::Leave {
@@ -923,14 +921,16 @@ impl App {
                 mut fields,
                 mut focus,
                 mut format,
+                mut keep_original_backup,
                 mut error,
             } => {
-                if key.code == KeyCode::Enter && focus == 4 {
+                let action = settings_key(key, &mut focus, &mut format, &mut keep_original_backup);
+                if action == SettingsAction::Cancel {
                     return;
                 }
-                if key.code == KeyCode::Enter {
+                if action == SettingsAction::Apply {
                     let values = fields.clone().map(|field| field.value);
-                    match parse_settings(&values) {
+                    match parse_settings(&values, keep_original_backup) {
                         Ok(settings) => {
                             self.settings = settings;
                             self.coordinate_format = format;
@@ -941,15 +941,7 @@ impl App {
                         }
                         Err(message) => error = message,
                     }
-                } else if key.code == KeyCode::F(2)
-                    || (focus == 2
-                        && matches!(
-                            key.code,
-                            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ')
-                        ))
-                {
-                    format = format.toggle();
-                } else if !move_focus(key, &mut focus, 5) && focus < 2 {
+                } else if action == SettingsAction::Edit && focus < 2 {
                     fields[focus].key(key);
                     error.clear();
                 }
@@ -957,6 +949,7 @@ impl App {
                     fields,
                     focus,
                     format,
+                    keep_original_backup,
                     error,
                 });
             }
@@ -1024,7 +1017,7 @@ impl App {
     }
 }
 
-fn parse_settings(fields: &[String; 2]) -> Result<Settings, String> {
+fn parse_settings(fields: &[String; 2], keep_original_backup: bool) -> Result<Settings, String> {
     let parse = |text: &str| {
         text.trim()
             .parse::<i64>()
@@ -1033,8 +1026,80 @@ fn parse_settings(fields: &[String; 2]) -> Result<Settings, String> {
     Settings {
         adjacent_gap_seconds: parse(&fields[0])?,
         reference_window_seconds: parse(&fields[1])?,
+        keep_original_backup,
     }
     .validate()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SettingsAction {
+    Edit,
+    Stay,
+    Apply,
+    Cancel,
+}
+
+fn settings_key(
+    key: KeyEvent,
+    focus: &mut usize,
+    format: &mut CoordinateFormat,
+    keep_original_backup: &mut bool,
+) -> SettingsAction {
+    let activate = matches!(key.code, KeyCode::Enter | KeyCode::Char(' '));
+    if key.code == KeyCode::Esc || (activate && *focus == 5) {
+        SettingsAction::Cancel
+    } else if key.code == KeyCode::F(3)
+        || (*focus == 3 && (activate || matches!(key.code, KeyCode::Left | KeyCode::Right)))
+    {
+        *keep_original_backup = !*keep_original_backup;
+        SettingsAction::Stay
+    } else if key.code == KeyCode::F(2)
+        || (*focus == 2 && (activate || matches!(key.code, KeyCode::Left | KeyCode::Right)))
+    {
+        *format = format.toggle();
+        SettingsAction::Stay
+    } else if key.code == KeyCode::Enter || (activate && *focus == 4) {
+        SettingsAction::Apply
+    } else if move_focus(key, focus, 6) {
+        SettingsAction::Stay
+    } else {
+        SettingsAction::Edit
+    }
+}
+
+fn apply_write_result(
+    photo: &mut Photo,
+    candidate: Candidate,
+    result: Result<WriteOutcome, String>,
+) -> Option<String> {
+    match result {
+        Ok(outcome) => {
+            photo.gps = Some(candidate.coordinates);
+            photo.provenance = Some(candidate.provenance);
+            photo.candidate = None;
+            photo.error = None;
+            outcome
+                .warning
+                .map(|warning| format!("{}：已写入；警告：{warning}", photo.path.display()))
+        }
+        Err(error) => {
+            let issue = format!("{}: {error}", photo.path.display());
+            photo.error = Some(error);
+            Some(issue)
+        }
+    }
+}
+
+fn write_summary(success: usize, total: usize, warnings: usize) -> String {
+    let warning = if warnings == 0 {
+        String::new()
+    } else {
+        format!("；警告 {warnings}")
+    };
+    format!(
+        "写入完成：成功 {success}/{total}；失败 {}{warning}（v 查看详情）",
+        total - success
+    )
 }
 
 fn move_focus(key: KeyEvent, focus: &mut usize, count: usize) -> bool {
@@ -1161,15 +1226,127 @@ mod tests {
 
     #[test]
     fn settings_reject_values_that_cannot_be_used_for_time_differences() {
-        assert!(parse_settings(&["60".into(), i64::MAX.to_string()]).is_err());
-        assert!(parse_settings(&["0".into(), "600".into()]).is_err());
+        assert!(parse_settings(&["60".into(), i64::MAX.to_string()], false).is_err());
+        assert!(parse_settings(&["0".into(), "600".into()], true).is_err());
         assert_eq!(
-            parse_settings(&[" 59 ".into(), "601".into()]).unwrap(),
+            parse_settings(&[" 59 ".into(), "601".into()], true).unwrap(),
             Settings {
                 adjacent_gap_seconds: 59,
                 reference_window_seconds: 601,
+                keep_original_backup: true,
             }
         );
+    }
+
+    #[test]
+    fn settings_backup_switch_supports_focus_activation_and_draft_cancellation() {
+        let saved = Settings::default();
+        assert!(!saved.keep_original_backup);
+        let mut draft = saved.keep_original_backup;
+        let mut focus = 0;
+        let mut format = CoordinateFormat::Decimal;
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        assert_eq!(
+            settings_key(key(KeyCode::F(3)), &mut focus, &mut format, &mut draft),
+            SettingsAction::Stay
+        );
+        assert!(draft);
+        assert_eq!(
+            settings_key(key(KeyCode::Esc), &mut focus, &mut format, &mut draft),
+            SettingsAction::Cancel
+        );
+        assert!(
+            !saved.keep_original_backup,
+            "Cancelled draft must not change saved settings"
+        );
+        assert_eq!(
+            settings_key(key(KeyCode::Enter), &mut focus, &mut format, &mut draft),
+            SettingsAction::Apply
+        );
+        assert!(
+            parse_settings(&["60".into(), "600".into()], draft)
+                .unwrap()
+                .keep_original_backup
+        );
+        for expected in 1..=5 {
+            assert_eq!(
+                settings_key(key(KeyCode::Tab), &mut focus, &mut format, &mut draft),
+                SettingsAction::Stay
+            );
+            assert_eq!(focus, expected);
+        }
+        assert_eq!(
+            settings_key(key(KeyCode::Char(' ')), &mut focus, &mut format, &mut draft),
+            SettingsAction::Cancel
+        );
+        settings_key(key(KeyCode::BackTab), &mut focus, &mut format, &mut draft);
+        assert_eq!(focus, 4);
+        assert_eq!(
+            settings_key(key(KeyCode::Char(' ')), &mut focus, &mut format, &mut draft),
+            SettingsAction::Apply
+        );
+        settings_key(key(KeyCode::Up), &mut focus, &mut format, &mut draft);
+        assert_eq!(focus, 3);
+        assert_eq!(
+            settings_key(key(KeyCode::Enter), &mut focus, &mut format, &mut draft),
+            SettingsAction::Stay
+        );
+        assert!(!draft);
+        assert_eq!(
+            settings_key(key(KeyCode::Char(' ')), &mut focus, &mut format, &mut draft),
+            SettingsAction::Stay
+        );
+        assert!(draft);
+        settings_key(key(KeyCode::BackTab), &mut focus, &mut format, &mut draft);
+        assert_eq!(focus, 2);
+        assert_eq!(
+            settings_key(key(KeyCode::Enter), &mut focus, &mut format, &mut draft),
+            SettingsAction::Stay
+        );
+        assert_eq!(format, CoordinateFormat::Dms);
+    }
+
+    #[test]
+    fn successful_write_with_cleanup_warning_is_written_and_warning_stays_visible() {
+        let candidate = Candidate {
+            coordinates: Coordinates::new(31.2, 121.4).unwrap(),
+            provenance: Provenance {
+                mode: Mode::Auto,
+                method: Method::TimeInterpolation,
+            },
+        };
+        let mut photo = Photo {
+            path: "photo.jpg".into(),
+            captured_at: None,
+            capture_time_info: Default::default(),
+            gps: None,
+            provenance: None,
+            candidate: Some(candidate),
+            error: Some("old error".into()),
+        };
+        let issue = apply_write_result(
+            &mut photo,
+            candidate,
+            Ok(WriteOutcome {
+                warning: Some("无法删除备份，已保留".into()),
+            }),
+        )
+        .unwrap();
+        assert_eq!(photo.status(), photopinfix::model::PhotoStatus::Written);
+        assert_eq!(photo.gps, Some(candidate.coordinates));
+        assert!(photo.candidate.is_none() && photo.error.is_none());
+        assert!(issue.contains("已写入；警告") && issue.contains("已保留"));
+        let summary = write_summary(1, 1, 1);
+        assert!(summary.contains("成功 1/1；失败 0；警告 1") && summary.contains("v 查看详情"));
+        photo.gps = None;
+        photo.provenance = None;
+        photo.candidate = Some(candidate);
+        assert!(
+            apply_write_result(&mut photo, candidate, Err("写入失败".into()))
+                .unwrap()
+                .contains("写入失败")
+        );
+        assert!(photo.gps.is_none() && photo.candidate.is_some() && photo.error.is_some());
     }
 
     #[test]

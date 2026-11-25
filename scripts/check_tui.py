@@ -6,6 +6,7 @@ Artifacts are terminal transcripts and screen dumps under target/test-artifacts/
 """
 
 from pathlib import Path
+import argparse
 import json
 import os
 import select
@@ -19,9 +20,14 @@ sys.path.insert(0, str(ROOT / "tools/test-deps"))
 import pexpect
 import pyte
 
-ARTIFACTS = ROOT / "target/test-artifacts"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("binary", nargs="?", default=str(ROOT / "target/debug/photopinfix"))
+parser.add_argument("--keep-original-backup", action="store_true")
+parser.add_argument("--artifacts", default=str(ROOT / "target/test-artifacts"))
+OPTIONS = parser.parse_args()
+ARTIFACTS = Path(OPTIONS.artifacts).resolve()
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
-BINARY = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "target/debug/photopinfix"
+BINARY = Path(OPTIONS.binary).resolve()
 STANDALONE = os.environ.get("PHOTOPINFIX_TEST_STANDALONE") == "1"
 
 
@@ -171,6 +177,10 @@ def main():
             os.utime(source, ns=original[:2])
         files = sorted(directory.iterdir())
         before = {path.name: times(path) for path in files}
+        originals = {}
+        for path in files:
+            originals[path] = path.read_bytes()
+            os.utime(path, ns=before[path.name][:2])
 
         tui = Tui(directory, "tui-flow")
         tui.expect("找到 73 张照片")
@@ -213,6 +223,14 @@ def main():
         tui.expect_selected(files[1].name)
         tui.key("s")
         tui.expect_modal("Settings · 本次运行")
+        tui.expect("[ ] 保留原图备份")
+        tui.key("\x1bOR")  # F3 toggles the draft, Escape discards it.
+        tui.expect("[x] 保留原图备份")
+        tui.key("\x1b")
+        tui.expect_modal_closed("Settings · 本次运行")
+        tui.key("s")
+        tui.expect_modal("Settings · 本次运行")
+        tui.expect("[ ] 保留原图备份")
         tui.snapshot("settings")
         tui.key("\x1bOQ\r")
         tui.expect_modal_closed("Settings · 本次运行", "设置已应用")
@@ -228,6 +246,13 @@ def main():
         tui.expect_modal("Settings · 本次运行")
         tui.key("\x1560\r")
         tui.expect_modal_closed("Settings · 本次运行", "设置已应用")
+        if OPTIONS.keep_original_backup:
+            tui.key("s")
+            tui.expect_modal("Settings · 本次运行")
+            tui.key("\x1bOR")
+            tui.expect("[x] 保留原图备份")
+            tui.key("\r")
+            tui.expect_modal_closed("Settings · 本次运行", "设置已应用")
         tui.key("\r")
         tui.expect_modal("确认写入")
         tui.expect("[取消]")
@@ -239,16 +264,18 @@ def main():
         tui.key("y")
         tui.expect_modal_closed("确认写入", "成功 1/1")
         tui.expect_stats(2, 28, 0, 0, 1)
+        assert len(list(directory.glob("*.photopinfix-original"))) == int(OPTIONS.keep_original_backup)
         tui.key("W")
         tui.expect_modal("确认写入")
         tui.key("\r")  # default is cancel
         tui.expect_modal_closed("确认写入", "已写入 1")
-        assert len(list(directory.glob("*.photopinfix-original"))) == 1
+        assert len(list(directory.glob("*.photopinfix-original"))) == int(OPTIONS.keep_original_backup)
         tui.key("W")
         tui.expect_modal("确认写入")
         tui.key("y")
         tui.expect_modal_closed("确认写入", "成功 28/28", seconds=120)
         tui.expect_stats(2, 0, 0, 0, 29)
+        assert len(list(directory.glob("*.photopinfix-original"))) == (29 if OPTIONS.keep_original_backup else 0)
         tui.key("\x1b[C")
         tui.expect("Session 2/9")
         tui.expect_stats(3, 3, 5, 0, 0)
@@ -267,11 +294,23 @@ def main():
         tui.snapshot("confirm-45x14")
         tui.key("\x1b")
         tui.expect_modal_closed("确认写入")
+        tui.key("s")
+        tui.expect_modal("Settings · 本次运行")
+        tui.expect("保留原图备份")
+        tui.expect("应用")
+        tui.snapshot("settings-45x14")
+        tui.key("\x1b")
+        tui.expect_modal_closed("Settings · 本次运行")
         tui.key("q")
         tui.close()
         for path in files:
             assert times(path) == before[path.name], f"TUI changed file timestamps/identity: {path.name}"
-        assert len(list(directory.glob("*.photopinfix-original"))) == 29
+        backups = list(directory.glob("*.photopinfix-original"))
+        assert len(backups) == (29 if OPTIONS.keep_original_backup else 0)
+        for backup in backups:
+            path = backup.with_name(backup.name.removesuffix(".photopinfix-original"))
+            assert backup.read_bytes() == originals[path], f"Backup differs from original: {path.name}"
+        print("PASS: backup settings cancellation and " + ("retention" if OPTIONS.keep_original_backup else "per-photo cleanup"), flush=True)
         print("PASS: TUI sessions, colors, shortcuts, decimal/DMS editor, temporary settings, confirmations, single/batch write, small terminal controls and file times", flush=True)
 
         # Start a real scan and quit as soon as the progress frame is visible.

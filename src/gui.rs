@@ -215,6 +215,7 @@ enum Dialog {
         gap: String,
         window: String,
         format: CoordinateFormat,
+        keep_original_backup: bool,
     },
     Write(WriteSnapshot),
     Leave(Destination),
@@ -311,6 +312,7 @@ impl Desktop {
             gap: self.state.settings.adjacent_gap_seconds.to_string(),
             window: self.state.settings.reference_window_seconds.to_string(),
             format: self.state.coordinate_format,
+            keep_original_backup: self.state.settings.keep_original_backup,
         });
     }
     fn write(&mut self, all: bool) {
@@ -1346,9 +1348,14 @@ impl Desktop {
                         gap,
                         window,
                         format,
+                        keep_original_backup,
                     } => {
-                        ui.heading("本次运行设置");
-                        ui.label("修改后立即重新计算自动建议，手动候选保留。");
+                        ui.label(RichText::new("本次运行设置").size(TITLE).strong());
+                        ui.label(
+                            RichText::new("应用后重新计算自动建议，手动候选保留。")
+                                .color(MUTED)
+                                .size(META),
+                        );
                         ui.separator();
                         ui.label("相邻照片间隔严格小于（秒）");
                         ui.add(egui::TextEdit::singleline(gap).desired_width(180.0));
@@ -1359,11 +1366,35 @@ impl Desktop {
                             ui.selectable_value(format, CoordinateFormat::Decimal, "小数度");
                             ui.selectable_value(format, CoordinateFormat::Dms, "度分秒");
                         });
-                        let parsed = settings_value(gap, window);
+                        ui.separator();
+                        if ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::F3))
+                        {
+                            *keep_original_backup = !*keep_original_backup;
+                        }
+                        ui.checkbox(
+                            keep_original_backup,
+                            RichText::new("保留原图备份").size(TEXT),
+                        )
+                        .on_hover_text("F3 切换");
+                        ui.label(
+                            RichText::new("默认关闭：每张写入成功后删除备份；失败时保留。")
+                                .color(MUTED)
+                                .size(META),
+                        );
+                        ui.label(
+                            RichText::new("开启后保留 .photopinfix-original 文件。F3 切换。")
+                                .color(MUTED)
+                                .size(META),
+                        );
+                        let parsed = settings_value(gap, window, *keep_original_backup);
                         if let Err(error) = &parsed {
                             ui.colored_label(RED, error);
                         }
-                        ui.small("设置只保留在内存中，下次启动恢复默认值。");
+                        ui.label(
+                            RichText::new("仅本次运行有效，下次启动恢复默认值。")
+                                .color(MUTED)
+                                .size(META),
+                        );
                         ui.separator();
                         ui.horizontal(|ui| {
                             dismiss = ui.button("取消  Esc").clicked();
@@ -1382,7 +1413,8 @@ impl Desktop {
                     Dialog::Write(snapshot) => {
                         ui.heading(format!("确认写入 {} 张照片？", snapshot.items.len()));
                         ui.label(&snapshot.scope);
-                        ui.label("写入 GPS 和 PhotoPinFix 来源标记，保留原文件备份与文件时间。");
+                        ui.label("写入 GPS 和 PhotoPinFix 来源标记，保留文件时间。");
+                        ui.label(backup_policy_label(snapshot.keep_original_backup));
                         ui.separator();
                         egui::ScrollArea::vertical()
                             .max_height(260.0)
@@ -1468,7 +1500,8 @@ impl Desktop {
                     gap,
                     window,
                     format,
-                } => match settings_value(&gap, &window) {
+                    keep_original_backup,
+                } => match settings_value(&gap, &window, keep_original_backup) {
                     Ok(settings) => {
                         let result = self.state.apply_settings(settings, format);
                         self.result(result);
@@ -1534,13 +1567,22 @@ impl eframe::App for Desktop {
     }
 }
 
-fn settings_value(gap: &str, window: &str) -> Result<Settings, String> {
+fn settings_value(gap: &str, window: &str, keep_original_backup: bool) -> Result<Settings, String> {
     let settings = Settings {
         adjacent_gap_seconds: gap.trim().parse().map_err(|_| "相邻间隔需要正整数秒")?,
         reference_window_seconds: window.trim().parse().map_err(|_| "参考时差需要正整数秒")?,
+        keep_original_backup,
     };
     settings.validate()?;
     Ok(settings)
+}
+
+fn backup_policy_label(keep_original_backup: bool) -> &'static str {
+    if keep_original_backup {
+        "保留原图备份：写入后保留 .photopinfix-original 文件。"
+    } else {
+        "不保留原图备份：每张成功后删除备份；失败时保留。"
+    }
 }
 
 fn photo_color(photo: &Photo) -> Color32 {
@@ -1586,7 +1628,70 @@ fn coordinate_label(photo: &Photo, format: CoordinateFormat) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::TEXT;
+    use super::*;
+
+    fn settings_frame(desktop: &mut Desktop, ctx: &egui::Context, key: Option<Key>) {
+        let events = key
+            .into_iter()
+            .flat_map(|key| {
+                [true, false].map(|pressed| egui::Event::Key {
+                    key,
+                    physical_key: Some(key),
+                    pressed,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                })
+            })
+            .collect();
+        ctx.run_pass(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(880.0, 640.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ctx| desktop.modal(ctx),
+        )
+        .drop_without_applying_deltas();
+    }
+
+    #[test]
+    fn backup_setting_is_a_draft_until_applied_and_escape_discards_it() {
+        let ctx = egui::Context::default();
+        configure(&ctx);
+        let mut desktop = Desktop::new(&ctx, None, MetadataTool::discover().unwrap());
+        assert!(!desktop.state.settings.keep_original_backup);
+        desktop.settings();
+        settings_frame(&mut desktop, &ctx, None);
+        settings_frame(&mut desktop, &ctx, Some(Key::F3));
+        assert!(matches!(
+            desktop.dialog,
+            Some(Dialog::Settings {
+                keep_original_backup: true,
+                ..
+            })
+        ));
+        assert!(!desktop.state.settings.keep_original_backup);
+        settings_frame(&mut desktop, &ctx, Some(Key::Escape));
+        assert!(desktop.dialog.is_none());
+        assert!(!desktop.state.settings.keep_original_backup);
+
+        desktop.settings();
+        settings_frame(&mut desktop, &ctx, None);
+        settings_frame(&mut desktop, &ctx, Some(Key::F3));
+        settings_frame(&mut desktop, &ctx, Some(Key::Enter));
+        assert!(desktop.dialog.is_none());
+        assert!(desktop.state.settings.keep_original_backup);
+
+        desktop.settings();
+        settings_frame(&mut desktop, &ctx, None);
+        settings_frame(&mut desktop, &ctx, Some(Key::F3));
+        settings_frame(&mut desktop, &ctx, Some(Key::Enter));
+        assert!(!desktop.state.settings.keep_original_backup);
+    }
+
     #[test]
     fn bundled_fonts_cover_interface_characters_without_system_fonts() {
         let mut fonts =

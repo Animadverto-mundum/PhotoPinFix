@@ -390,9 +390,10 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
             fields,
             focus,
             format,
+            keep_original_backup,
             error,
         } => {
-            draw_settings(frame, fields, *focus, *format, error);
+            draw_settings(frame, fields, *focus, *format, *keep_original_backup, error);
             return;
         }
         _ => {}
@@ -409,7 +410,7 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
                 Line::from("e：手动编辑 GPS；F2 小数/度分秒，F3 正负号/NSEW"),
                 Line::from("p：采用前一张已有GPS图；n：后一张；c：时间最近；i：按时间插值"),
                 Line::from("手动快捷键不受 1 分钟 / 10 分钟阈值限制；u：恢复自动建议"),
-                Line::from("s：设置自动补全阈值与经纬度显示格式，仅本次运行有效"),
+                Line::from("s：设置补全阈值、坐标格式与原图备份；设置中 F3 切换备份"),
                 Line::from("m：无底图 / 图片地图；b：切换地图源；+/-：缩放；f：全部点入镜"),
                 Line::from("H/J/K/L：平移地图；鼠标在地图上滚动缩放"),
                 Line::from("l / Enter：打开目录；Backspace：上级；r：重新扫描；v：错误详情"),
@@ -432,7 +433,11 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
         ),
         Modal::Info(text) => ("错误与提示", text.lines().map(Line::from).collect()),
         Modal::Settings { .. } | Modal::Edit { .. } => unreachable!(),
-        Modal::Confirm { indices, .. } => {
+        Modal::Confirm {
+            indices,
+            keep_original_backup,
+            ..
+        } => {
             let mut lines = vec![
                 Line::from(format!(
                     "将写入 {} 张照片（{}）。",
@@ -441,7 +446,8 @@ fn draw_modal(frame: &mut Frame, app: &App, modal: &Modal) {
                 ))
                 .bold(),
                 Line::from("仅写入缺少 GPS 且已有候选的文件；已有 GPS 全部跳过。"),
-                Line::from("写入 GPS 与 PhotoPinFix:Mode / Method，保留原图备份。"),
+                Line::from(backup_policy(*keep_original_backup)),
+                Line::from("写入 GPS 与 PhotoPinFix:Mode / Method 来源标记。"),
                 Line::from("保持创建、修改和访问时间；写完回读验证。"),
                 Line::from(""),
             ];
@@ -677,23 +683,34 @@ fn draw_settings(
     fields: &[TextInput; 2],
     focus: usize,
     format: CoordinateFormat,
+    keep_original_backup: bool,
     error: &str,
 ) {
     let area = center(frame.area(), 78, 23);
     let inner = form_block(frame, area, "Settings · 本次运行");
     let compact = inner.height < 15;
-    let [description, gap, window, display, feedback, buttons, hints] = Layout::vertical([
+    let [
+        description,
+        gap,
+        window,
+        display,
+        backup,
+        feedback,
+        buttons,
+        hints,
+    ] = Layout::vertical([
         Constraint::Length(if compact { 0 } else { 2 }),
         Constraint::Length(3),
         Constraint::Length(3),
         Constraint::Length(if compact { 1 } else { 3 }),
+        Constraint::Length(if compact { 1 } else { 3 }),
         Constraint::Min(0),
         Constraint::Length(1),
-        Constraint::Length(if compact { 2 } else { 3 }),
+        Constraint::Length(if compact { 1 } else { 2 }),
     ])
     .areas(inner);
     frame.render_widget(
-        Paragraph::new("修改自动补全范围和经纬度显示方式，退出后恢复默认。")
+        Paragraph::new("设置补全范围、坐标显示与原图备份，退出后恢复默认。")
             .style(Style::default().fg(MUTED)),
         description,
     );
@@ -736,24 +753,61 @@ fn draw_settings(
             display,
         );
     }
+    let backup_line = Line::from(vec![
+        Span::raw(if focus == 3 { "› " } else { "  " }),
+        choice(
+            if keep_original_backup {
+                "[x] 保留原图备份"
+            } else {
+                "[ ] 保留原图备份"
+            },
+            focus == 3,
+        ),
+        Span::styled("  F3", Style::default().fg(MUTED)),
+    ]);
+    if compact {
+        frame.render_widget(Paragraph::new(backup_line), backup);
+    } else {
+        frame.render_widget(
+            Paragraph::new(backup_line).block(
+                Block::bordered()
+                    .title(" 写入完成后 · 默认关闭 ")
+                    .border_style(Style::default().fg(if focus == 3 { ACCENT } else { MUTED })),
+            ),
+            backup,
+        );
+    }
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(error.to_string()).red(),
-            Line::from("默认 60 / 600 秒；保留已有手动候选。").style(Style::default().fg(MUTED)),
+            Line::from(backup_policy(keep_original_backup)).style(Style::default().fg(MUTED)),
         ])
         .wrap(Wrap { trim: false }),
         feedback,
     );
-    form_buttons(frame, buttons, focus, 3, 4, "应用设置 · Enter");
+    form_buttons(frame, buttons, focus, 4, 5, "应用设置 · Enter");
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::from("Tab 切换控件 · Ctrl+U 清空 · F2 切换坐标格式"),
-            Line::from("选中坐标格式后 ←/→ 或空格切换 · Enter 应用"),
-            Line::from("仅本次运行有效，不写入配置文件。"),
-        ])
+        Paragraph::new(if compact && !error.is_empty() {
+            vec![Line::from(error.to_string()).red()]
+        } else if compact {
+            vec![Line::from("Tab控件 F2格式 F3备份 Enter操作 Esc取消")]
+        } else {
+            vec![
+                Line::from("Tab 切换控件 · F2 坐标格式 · F3 保留备份"),
+                Line::from("开关 Enter/空格 切换 · 应用 Enter/空格 · Esc 取消"),
+            ]
+        })
         .style(Style::default().fg(MUTED)),
         hints,
     );
+}
+
+fn backup_policy(keep_original_backup: bool) -> &'static str {
+    if keep_original_backup {
+        "备份：保留 .photopinfix-original 原图备份。"
+    } else {
+        "备份：每张校验及时间恢复成功后删除；失败保留。"
+    }
 }
 
 fn draw_dialog<'a>(
@@ -979,6 +1033,110 @@ mod tests {
             );
             assert!(text.contains("暂存坐标") && text.contains("取消"), "{text}");
             assert!(text.contains("F2") && text.contains("F3"));
+        }
+    }
+
+    #[test]
+    fn settings_backup_switch_and_actions_fit_small_terminals() {
+        let fields = [
+            TextInput::from("60".to_owned()),
+            TextInput::from("600".to_owned()),
+        ];
+        for (width, height) in [(100, 30), (80, 24), (45, 14)] {
+            for keep in [false, true] {
+                for focus in [3, 4, 5] {
+                    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+                    terminal
+                        .draw(|frame| {
+                            draw_settings(
+                                frame,
+                                &fields,
+                                focus,
+                                CoordinateFormat::Decimal,
+                                keep,
+                                "",
+                            )
+                        })
+                        .unwrap();
+                    let buffer = terminal.backend().buffer();
+                    let text = (0..height)
+                        .flat_map(|y| (0..width).map(move |x| buffer[(x, y)].symbol()))
+                        .collect::<String>()
+                        .replace(' ', "");
+                    assert!(
+                        text.contains(if keep {
+                            "[x]保留原图备份"
+                        } else {
+                            "[]保留原图备份"
+                        }),
+                        "{width}x{height}: {text}"
+                    );
+                    assert!(
+                        text.contains("应用设置") && text.contains("取消") && text.contains("F3"),
+                        "{text}"
+                    );
+                }
+            }
+        }
+        let mut terminal = Terminal::new(TestBackend::new(45, 14)).unwrap();
+        terminal
+            .draw(|frame| {
+                draw_settings(
+                    frame,
+                    &fields,
+                    0,
+                    CoordinateFormat::Decimal,
+                    false,
+                    "阈值无效",
+                )
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        let text = (0..14)
+            .flat_map(|y| (0..45).map(move |x| buffer[(x, y)].symbol()))
+            .collect::<String>()
+            .replace(' ', "");
+        assert!(
+            text.contains("阈值无效") && text.contains("保留原图备份") && text.contains("应用设置"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn confirmation_describes_backup_policy_without_hiding_controls() {
+        for keep in [false, true] {
+            let mut terminal = Terminal::new(TestBackend::new(45, 14)).unwrap();
+            terminal
+                .draw(|frame| {
+                    draw_dialog(
+                        frame,
+                        center(frame.area(), 86, 23),
+                        "确认写入",
+                        vec![
+                            Line::from("将写入 1 张照片"),
+                            Line::from(backup_policy(keep)),
+                        ],
+                        confirmation_footer(false),
+                    )
+                })
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            // Join only the dialog's content cells. Wrapped policy text spans
+            // rows; the surrounding frame is not part of its visible words.
+            let inner = Block::bordered().inner(center(Rect::new(0, 0, 45, 14), 86, 23));
+            let text = (inner.y..inner.bottom())
+                .flat_map(|y| (inner.x..inner.right()).map(move |x| buffer[(x, y)].symbol()))
+                .collect::<String>()
+                .replace(' ', "");
+            assert!(
+                text.contains(if keep {
+                    ".photopinfix-original"
+                } else {
+                    "成功后删除；失败保留"
+                }),
+                "{text}"
+            );
+            assert!(text.contains("[确认]") && text.contains("[取消]"), "{text}");
         }
     }
 

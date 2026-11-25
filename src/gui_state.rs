@@ -4,7 +4,7 @@ use image::DynamicImage;
 use photopinfix::{
     coordinates::CoordinateFormat,
     map::MapPoint,
-    metadata::{MetadataTool, ScanResult},
+    metadata::{MetadataTool, ScanResult, WriteOutcome},
     model::{
         Candidate, Coordinates, Method, Mode, Photo, PhotoStats, Provenance, Session, Settings,
     },
@@ -33,6 +33,7 @@ pub struct WriteItem {
 pub struct WriteSnapshot {
     pub items: Vec<WriteItem>,
     pub scope: String,
+    pub keep_original_backup: bool,
     directory_generation: u64,
 }
 
@@ -51,6 +52,7 @@ pub struct GuiState {
     pub loading: bool,
     pub writing: bool,
     pub write_progress: (usize, usize),
+    write_warning_count: usize,
     /// Changes when the list, scope, selection or effective coordinates change.
     pub revision: u64,
     pub preview: Option<DynamicImage>,
@@ -97,6 +99,7 @@ impl GuiState {
             loading: false,
             writing: false,
             write_progress: (0, 0),
+            write_warning_count: 0,
             revision: 0,
             preview: None,
             preview_status: String::new(),
@@ -496,6 +499,7 @@ impl GuiState {
         Ok(WriteSnapshot {
             items,
             scope: self.scope_label(),
+            keep_original_backup: self.settings.keep_original_backup,
             directory_generation: self.directory_generation,
         })
     }
@@ -506,9 +510,11 @@ impl GuiState {
         self.workers.send(Request::Write {
             generation: self.directory_generation,
             items: snapshot.items,
+            keep_original_backup: snapshot.keep_original_backup,
         })?;
         self.writing = true;
         self.write_progress = (0, total);
+        self.write_warning_count = 0;
         self.preview_cancel.store(true, Ordering::Release);
         self.preview_dirty = true;
         self.status = format!("正在写入并校验 {total} 张照片…");
@@ -624,11 +630,16 @@ impl GuiState {
                     .filter(|p| p.path == item.path)
                 {
                     match result {
-                        Ok(()) => {
+                        Ok(outcome) => {
                             photo.gps = Some(item.candidate.coordinates);
                             photo.provenance = Some(item.candidate.provenance);
                             photo.candidate = None;
                             photo.error = None;
+                            if let Some(warning) = outcome.warning {
+                                self.warnings
+                                    .push(format!("{}: {warning}", item.path.display()));
+                                self.write_warning_count += 1;
+                            }
                         }
                         Err(error) => {
                             self.warnings
@@ -646,6 +657,12 @@ impl GuiState {
                 self.writing = false;
                 self.write_progress = (total, total);
                 self.status = format!("写入完成：成功 {success}/{total}；失败 {}", total - success);
+                if self.write_warning_count > 0 {
+                    self.status.push_str(&format!(
+                        "；{} 条提示（更多 → 详情）",
+                        self.write_warning_count
+                    ));
+                }
                 // Reset cancellation so an aborted queued preview is retried.
                 self.invalidate_preview();
             }
@@ -686,13 +703,14 @@ enum Request {
     Write {
         generation: u64,
         items: Vec<WriteItem>,
+        keep_original_backup: bool,
     },
 }
 
 enum Response {
     Scan(u64, Result<ScanResult, String>),
     Preview(u64, Result<DynamicImage, String>),
-    Written(u64, WriteItem, Result<(), String>),
+    Written(u64, WriteItem, Result<WriteOutcome, String>),
     WriteFinished(u64, usize, usize),
 }
 
@@ -736,13 +754,23 @@ impl IoWorker {
                             guarded(|| preview::load_preview(&path, &tool, size.0, size.1));
                         let _ = sender.send(Response::Preview(generation, result));
                     }
-                    Request::Write { generation, items } => {
+                    Request::Write {
+                        generation,
+                        items,
+                        keep_original_backup,
+                    } => {
                         // A confirmed batch finishes even when the window is
                         // closing. Only unstarted reads can be discarded.
                         let total = items.len();
                         let mut success = 0;
                         for item in items {
-                            let result = guarded(|| tool.write_gps(&item.path, &item.candidate));
+                            let result = guarded(|| {
+                                tool.write_gps_with_backup(
+                                    &item.path,
+                                    &item.candidate,
+                                    keep_original_backup,
+                                )
+                            });
                             success += usize::from(result.is_ok());
                             let _ = sender.send(Response::Written(generation, item, result));
                         }
@@ -879,7 +907,11 @@ mod tests {
             candidate: state.photos[1].candidate.unwrap(),
         };
         let before = state.stats();
-        assert!(!state.accept(Response::Written(99, item.clone(), Ok(()))));
+        assert!(!state.accept(Response::Written(
+            99,
+            item.clone(),
+            Ok(WriteOutcome::default())
+        )));
         assert_eq!(state.stats(), before);
         state.accept(Response::Written(
             0,
@@ -888,7 +920,7 @@ mod tests {
         ));
         assert_eq!(state.stats(), before);
         assert!(state.photos[1].gps.is_none());
-        state.accept(Response::Written(0, item, Ok(())));
+        state.accept(Response::Written(0, item, Ok(WriteOutcome::default())));
         let after = state.stats();
         assert_eq!(
             (after.written, after.manual_pending, after.pending_write()),
@@ -985,6 +1017,60 @@ mod tests {
     }
 
     #[test]
+    fn confirmed_backup_policy_is_frozen_even_if_settings_change() {
+        let mut state = loaded();
+        let (requests, pending) = mpsc::channel();
+        state.workers.requests = Some(requests);
+        let reviewed = state.write_snapshot(true).unwrap();
+        assert!(!reviewed.keep_original_backup);
+        state
+            .apply_settings(
+                Settings {
+                    keep_original_backup: true,
+                    ..state.settings
+                },
+                state.coordinate_format,
+            )
+            .unwrap();
+        assert!(state.write_snapshot(true).unwrap().keep_original_backup);
+        state.confirm_write(reviewed).unwrap();
+        match pending.try_recv().unwrap() {
+            Request::Write {
+                keep_original_backup,
+                items,
+                ..
+            } => {
+                assert!(!keep_original_backup);
+                assert_eq!(items.len(), 1);
+            }
+            _ => panic!("confirmation must submit the reviewed write"),
+        }
+    }
+
+    #[test]
+    fn backup_cleanup_warning_keeps_the_photo_written_and_is_visible() {
+        let mut state = loaded();
+        let item = state.write_snapshot(true).unwrap().items.remove(0);
+        let index = item.index;
+        state.accept(Response::Written(
+            0,
+            item,
+            Ok(WriteOutcome {
+                warning: Some("备份清理失败，原图备份已保留".into()),
+            }),
+        ));
+        state.accept(Response::WriteFinished(0, 1, 1));
+        assert!(state.photos[index].gps.is_some());
+        assert!(state.photos[index].candidate.is_none());
+        assert!(state.photos[index].error.is_none());
+        assert_eq!(state.stats().written, 1);
+        assert_eq!(state.warnings.len(), 1);
+        assert!(state.warnings[0].contains("备份清理失败"));
+        assert!(state.status.contains("成功 1/1；失败 0"));
+        assert!(state.status.contains("1 条提示"));
+    }
+
+    #[test]
     fn greens_are_protected_and_settings_preserve_manual_proposals() {
         let mut state = loaded();
         assert!(
@@ -1003,6 +1089,7 @@ mod tests {
                 Settings {
                     adjacent_gap_seconds: 1,
                     reference_window_seconds: 1,
+                    ..Settings::default()
                 },
                 CoordinateFormat::Dms,
             )
@@ -1180,7 +1267,6 @@ mod tests {
         let target = directory.join("02 待补.jpg");
         fixture_jpeg(&anchor, "2026:11:23 10:00:00");
         fixture_jpeg(&target, "2026:11:23 10:00:30");
-        let original_target = fs::read(&target).unwrap();
         let tool = MetadataTool::discover().expect("built-in metadata engine must be available");
         let anchor_candidate = Candidate {
             coordinates: Coordinates::new(35.5, -120.25).unwrap(),
@@ -1259,10 +1345,82 @@ mod tests {
         assert_eq!(written.captured_at, state.photos[1].captured_at);
         assert_eq!(FileSnapshot::capture(&anchor), anchor_before);
         assert_eq!(FileSnapshot::capture(&target), target_before);
-        assert_eq!(
-            fs::read(directory.join("02 待补.jpg.photopinfix-original")).unwrap(),
-            original_target
-        );
+        assert!(!directory.join("02 待补.jpg.photopinfix-original").exists());
+        assert!(state.warnings.is_empty());
+    }
+
+    #[test]
+    fn batch_applies_backup_policy_per_successful_photo_even_when_next_photo_fails() {
+        for keep_original_backup in [false, true] {
+            let temporary = tempfile::tempdir().unwrap();
+            let target = temporary.path().join("写入照片.jpg");
+            fixture_jpeg(&target, "2026:11:23 10:00:00");
+            let original = fs::read(&target).unwrap();
+            let backup = temporary.path().join("写入照片.jpg.photopinfix-original");
+            let candidate = Candidate {
+                coordinates: Coordinates::new(-20.0, -70.0).unwrap(),
+                provenance: Provenance {
+                    mode: Mode::Manual,
+                    method: Method::CoordinateInput,
+                },
+            };
+            let tool = MetadataTool::discover().unwrap();
+            let mut worker = IoWorker::new(tool.clone());
+            worker
+                .send(Request::Write {
+                    generation: 7,
+                    items: vec![
+                        WriteItem {
+                            index: 0,
+                            path: target.clone(),
+                            candidate,
+                        },
+                        WriteItem {
+                            index: 1,
+                            path: temporary.path().join("外部已删除.jpg"),
+                            candidate,
+                        },
+                    ],
+                    keep_original_backup,
+                })
+                .unwrap();
+            match worker
+                .responses
+                .recv_timeout(StdDuration::from_secs(60))
+                .unwrap()
+            {
+                Response::Written(7, item, Ok(outcome)) => {
+                    assert_eq!(item.path, target);
+                    assert!(outcome.warning.is_none());
+                    // Cleanup has completed before this per-photo result,
+                    // independently of the remaining batch's outcome.
+                    assert_eq!(backup.exists(), keep_original_backup);
+                    if keep_original_backup {
+                        assert_eq!(fs::read(&backup).unwrap(), original);
+                    }
+                }
+                _ => panic!("first photo must be written successfully"),
+            }
+            assert!(matches!(
+                worker
+                    .responses
+                    .recv_timeout(StdDuration::from_secs(60))
+                    .unwrap(),
+                Response::Written(7, WriteItem { index: 1, .. }, Err(_))
+            ));
+            assert!(matches!(
+                worker
+                    .responses
+                    .recv_timeout(StdDuration::from_secs(60))
+                    .unwrap(),
+                Response::WriteFinished(7, 1, 2)
+            ));
+            worker.shutdown();
+            assert_eq!(backup.exists(), keep_original_backup);
+            let written = tool.scan_directory(temporary.path()).unwrap();
+            assert_eq!(written.photos.len(), 1);
+            assert_eq!(written.photos[0].gps, Some(candidate.coordinates));
+        }
     }
 
     #[test]

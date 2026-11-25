@@ -24,6 +24,8 @@ After building the executable, run:
 
 ```sh
 python3 scripts/check_gui.py target/debug/photopinfix
+# Exercise the retained-backup setting through the same real settings dialog:
+python3 scripts/check_gui.py target/debug/photopinfix --keep-original-backup --artifacts target/gui-keep-backup
 # The same test can validate the standalone release executable:
 python3 scripts/check_gui.py target/release/photopinfix --artifacts target/gui-release-check
 # Verify the public --gui launcher and welcome-folder flow separately:
@@ -78,7 +80,8 @@ dialog. This test writes the manual 10:00:30 photo first, then expects the
 The test process uses the developer copy `tools/exiftool/exiftool` and Perl to
 prepare fixtures and independently check final GPS and provenance. Those tools
 are not available to the application. It also checks byte-identical untouched
-photos and backups, and exact access/modification/birth times plus inode identity
+photos, removal of each completed photo's backup by default (or byte-identical
+backups with `--keep-original-backup`), and exact access/modification/birth times plus inode identity
 when the filesystem exposes birth time. Metadata is inspected only after the
 application has gracefully exited and joined its I/O worker. This avoids races
 between the independent oracle and application access-time guards.

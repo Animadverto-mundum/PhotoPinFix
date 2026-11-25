@@ -100,6 +100,7 @@ Linux/macOS 还可运行真实终端键盘操作测试（需要 `pexpect`、`pyt
 ```bash
 python scripts/check_tui.py
 PHOTOPINFIX_TEST_STANDALONE=1 python scripts/check_tui.py ./target/release/photopinfix
+PHOTOPINFIX_TEST_STANDALONE=1 python scripts/check_tui.py ./target/release/photopinfix --keep-original-backup --artifacts target/tui-keep-backup
 ```
 
 它在临时副本上检查 session、手动快捷键、度分秒编辑、设置、确认与取消、单张/批量写回、终端尺寸变化和读取中退出。终端记录保存在 `target/test-artifacts/`。地图的显式可视化验证命令为 `cargo run --example map_preview_check -- --online`；仅这个测试例子将对比图片输出到该目录，应用本身仍在内存中绘制地图。
@@ -190,7 +191,9 @@ GUI 与 TUI 写入后都保留其他已查看的候选，不会立即根据新�
 
 自动建议经确认写入仍为 auto；使用编辑框或手动快捷键则标 manual。不写工具版本或操作日期。自定义字段定义来自 `assets/photopinfix-exiftool.config`，编译时嵌入程序，运行时不需要查找此文件。
 
-写入先在副本上完成并回读验证，保留 `<原文件名>.photopinfix-original` 备份，再通过原文件句柄写回，保持原文件身份及创建时间；恢复并校验修改时间、访问时间。扫描和预览同样恢复访问时间。发生错误时显示具体原因，写入失败会尝试从备份恢复。备份已存在时拒绝覆盖。
+写入先在副本上完成并回读验证，创建 `<原文件名>.photopinfix-original` 备份，再通过原文件句柄写回，保持原文件身份及创建时间；恢复并校验修改时间、访问时间。GUI/TUI 共用的“保留原图备份”默认关闭，仅本次运行生效。确认写入时固定备份策略；默认每张照片全部完成后立即删除本次创建的备份，批量写入不等整批结束。开启保留选项时成功后也保留备份。删除失败仍将照片标为已写入，并显示备份未删除的警告。
+
+扫描和预览同样恢复访问时间。发生错误时显示具体原因，写入失败会尝试从备份恢复；写入、校验或时间恢复失败时保留已创建的备份。备份复制失败时可能只包含部分原始数据，错误会明确说明。备份已存在时拒绝覆盖，也不会自动清理旧备份。
 
 这些保护覆盖应用自身的文件 I/O，不覆盖系统选择器或其他进程的读取。macOS 原生文件夹面板验收中，打开面板前五张照片的时间与身份均一致，打开面板后仅访问时间更新，修改时间、创建时间和 inode 不变；面板同时显示了照片缩略图。需要保留打开目录前的访问时间时，应通过目录输入框或启动参数指定路径。原生选择器和应用 I/O 保时分别在独立目录、独立进程中验收，后者仍逐字段精确比较，不以重置基线掩盖系统面板的副作用。
 

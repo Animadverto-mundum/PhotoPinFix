@@ -384,7 +384,7 @@ class X11:
         self.lib.XCloseDisplay(self.display)
 
 
-def verify(oracle, paths, original, expected_times):
+def verify(oracle, paths, original, expected_times, keep_original_backup=False):
     for path in paths:
         observed = snapshot(path)
         if observed != expected_times[path]:
@@ -404,7 +404,10 @@ def verify(oracle, paths, original, expected_times):
                 else:
                     assert actual == value, (path.name, key, actual, value)
             backup = path.with_name(path.name + ".photopinfix-original")
-            assert backup.read_bytes() == original[path], f"Original backup differs: {path.name}"
+            if keep_original_backup:
+                assert backup.read_bytes() == original[path], f"Original backup differs: {path.name}"
+            else:
+                assert not backup.exists(), f"Successful write left a backup: {path.name}"
             assert current != original[path], f"GPS was not written: {path.name}"
         else:
             assert current == original[path], f"Untargeted image changed: {path.name}"
@@ -483,17 +486,16 @@ def run(args):
             x.key("bracketright")
             x.settled()
             x.key("bracketleft")
-            if screenshots:
-                # A quiet loading placeholder is also a stable frame. For the
-                # documentation landscape, require an actual, sufficiently
-                # large photograph inside the painted preview canvas.
-                def landscape_rendered():
-                    try:
-                        return photo_geometry(x.frame())
-                    except RuntimeError:
-                        return False
+            # A quiet loading placeholder is also a stable frame. Both fixture
+            # and documentation runs require the actual photograph before
+            # measuring it, including on a busy build machine.
+            def photo_rendered():
+                try:
+                    return photo_geometry(x.frame())
+                except RuntimeError:
+                    return False
 
-                x.wait(landscape_rendered, "landscape pixels replace the loading placeholder", timeout=30)
+            x.wait(photo_rendered, "photo pixels replace the loading placeholder", timeout=30)
             overview = x.settled(artifacts / "gui-overview.png" if screenshots else None)
             overview_geometry = photo_geometry(overview)
             x.key("e")
@@ -515,6 +517,21 @@ def run(args):
             x.settled()
             x.key("bracketleft")
             x.settled(artifacts / "gui-04b-manual-pending.png")
+            # Settings are a draft until applied. Cancelling the enabled
+            # checkbox must leave the default cleanup policy unchanged.
+            x.key("s")
+            x.settled(artifacts / "gui-settings-default.png")
+            x.key("F3")
+            x.settled(artifacts / "gui-settings-retain.png")
+            x.key("Escape")
+            x.settled()
+            if args.keep_original_backup:
+                x.key("s")
+                x.settled()
+                x.key("F3")
+                x.settled()
+                x.key("Return")
+                x.settled()
             x.key("Return")
             x.settled(artifacts / "gui-05-confirm-current.png")
             # Enter must cancel the default-focused confirmation, never write.
@@ -527,7 +544,14 @@ def run(args):
 
             def written(index):
                 path = paths[index]
-                return path.with_name(path.name + ".photopinfix-original").exists() and snapshot(path) == expected_times[path]
+                # Stat only: reading photo contents while the application is
+                # active would race its access-time guards. These fixtures
+                # grow when GPS/XMP is added; the oracle verifies exact values
+                # after exit. Backup absence alone cannot prove a write ran.
+                backup = path.with_name(path.name + ".photopinfix-original")
+                return (path.stat().st_size != len(original[path])
+                        and backup.exists() == args.keep_original_backup
+                        and snapshot(path) == expected_times[path])
 
             x.wait(lambda: written(1), "current photo write completes and restores file times")
             x.settled(artifacts / "gui-06-current-written.png")
@@ -588,6 +612,10 @@ def run(args):
             x.settled(artifacts / "gui-13-minimum-editor.png")
             x.key("Escape")
             x.settled()
+            x.key("s")
+            x.settled(artifacts / "gui-13b-minimum-settings.png")
+            x.key("Escape")
+            x.settled()
             x.lib.XResizeWindow(x.display, x.window, 1440, 640)
             x.lib.XFlush(x.display)
             x.wait(lambda: (x.attributes().width, x.attributes().height) == (1440, 640), "wide short viewport")
@@ -596,7 +624,7 @@ def run(args):
             x.key("q", ("Control_L",))
             result = application.wait(timeout=20)
             assert result == 0, f"GUI exited with {result}"
-            verify(oracle, paths, original, expected_times)
+            verify(oracle, paths, original, expected_times, args.keep_original_backup)
             if screenshots:
                 # Export exact X11 window captures only after the full workflow
                 # and independent metadata checks pass. No cropping, retouching
@@ -607,6 +635,8 @@ def run(args):
                     shutil.copyfile(artifacts / source, screenshots / name)
             report = {"executable": binary.name, "empty_path": True, "outside_checkout": True,
                       "native_window": True, "manual_and_auto_writes": True, "all_times_and_inode_preserved": True,
+                      "backup_policy": "retain" if args.keep_original_backup else "delete_each_success",
+                      "backup_settings_cancelled_without_applying": True,
                       "photo_geometry": {"overview": overview_geometry, "compact": compact_geometry},
                       "compact_tab_points": tab_points,
                       "birthtime_available": all(value["created_ns"] is not None for value in expected_times.values()),
@@ -659,6 +689,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", nargs="?", default=str(ROOT / "target/debug/photopinfix"))
     parser.add_argument("--artifacts", default=str(ROOT / "target/test-artifacts"))
+    parser.add_argument("--keep-original-backup", action="store_true", help="Enable retention through the real GUI settings before writing")
     parser.add_argument("--screenshots", metavar="DIRECTORY", help="Export verified, unmodified overview.png and gps-editor.png window captures for documentation")
     options = parser.parse_args()
     try:

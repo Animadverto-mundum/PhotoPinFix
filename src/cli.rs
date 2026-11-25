@@ -90,7 +90,7 @@ s 临时设置   m 地图底图开关   b 切换地图源   +/- 缩放   f 全�
 H/J/K/L 平移地图   l 打开目录   Backspace 上级   r 重扫   ? 帮助   q 退出\n\n\
 --help/-h 查看用法；--version/-V 查看版本；-- 后可传以 - 开头的目录。\n\
 自动规则默认：相邻间隔 <60 秒，参考总时差 ≤600 秒；>1 小时分 session。\n\
-GPS 和 PhotoPinFix:Mode/Method 仅在确认后写入；写回前保留原文件备份。\n\
+GPS 和 PhotoPinFix:Mode/Method 仅在确认后写入；每张成功后默认删除临时备份，设置可保留。\n\
 内置元数据引擎和 HEIC 解码，无需安装 Python、Perl 或 ExifTool。\n\
 地图默认无底图；图片、地图与瓦片缓存仅在内存中处理。",
         env!("CARGO_PKG_VERSION")

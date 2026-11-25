@@ -274,6 +274,7 @@ impl Photo {
 pub struct Settings {
     pub adjacent_gap_seconds: i64,
     pub reference_window_seconds: i64,
+    pub keep_original_backup: bool,
 }
 
 impl Default for Settings {
@@ -281,6 +282,7 @@ impl Default for Settings {
         Self {
             adjacent_gap_seconds: 60,
             reference_window_seconds: 600,
+            keep_original_backup: false,
         }
     }
 }

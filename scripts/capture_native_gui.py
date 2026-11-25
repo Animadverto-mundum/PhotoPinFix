@@ -617,6 +617,12 @@ def run(args):
                     difference = ImageChops.difference(compact, location).convert('L').point(lambda value: 255 if value > 12 else 0)
                     assert difference.histogram()[255] > compact.width * compact.height * 0.04, 'Compact location tab did not visibly replace the photo view'
                     record_photo_times(report, 'after_compact_navigation', paths)
+                    desktop.key('s', window=main)
+                    settings = settled(application, desktop, main, output / 'compact-settings.png')
+                    difference = ImageChops.difference(location, settings).convert('L').point(lambda value: 255 if value > 12 else 0)
+                    assert difference.histogram()[255] > compact.width * compact.height * 0.04, 'Settings shortcut did not visibly open its form'
+                    desktop.key('escape', window=main)
+                    settled(application, desktop, main, output / 'settings-closed.png')
                     desktop.key('q', command=True, window=main)
                     assert application.wait(timeout=20) == 0, 'GUI exit was unsuccessful'
                     verify_photo_times(report, paths, expected_times)
@@ -625,7 +631,7 @@ def run(args):
                         assert snapshot(path) == expected_times[path], f'Photo verification changed timestamps/identity: {path.name}'
                     report.update(real_native_windows=True, status='success', native_picker_cancelled=True,
                                   empty_path=True, app_io_times_preserved=True, untouched_photos=True,
-                                  screenshots=['overview.png', 'gps-editor.png', 'native-folder-dialog.png', 'compact-photo.png', 'compact-location.png'])
+                                  screenshots=['overview.png', 'gps-editor.png', 'native-folder-dialog.png', 'compact-photo.png', 'compact-location.png', 'compact-settings.png'])
             except BaseException as error:
                 primary_error = error
                 # Capture before terminating the real window. Diagnostics

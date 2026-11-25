@@ -543,7 +543,20 @@ fn write_strategy_candidate(
             .map_err(|error| error.to_string())
     })?;
     let times = set_old_times(&path)?;
-    tool.write_gps(&path, &candidate)?;
+    let outcome = tool.write_gps(&path, &candidate)?;
+    ensure(
+        outcome.warning.is_none(),
+        format!("RAW strategy write cleanup warning: {:?}", outcome.warning),
+    )?;
+    let mut backup_name = path
+        .file_name()
+        .ok_or("RAW filename is missing")?
+        .to_os_string();
+    backup_name.push(".photopinfix-original");
+    ensure(
+        !path.with_file_name(backup_name).exists(),
+        "default RAW write retained a backup".into(),
+    )?;
     let written = find_photo(tool, directory.path(), &path)?;
     ensure(
         matching_coordinates(written.gps, Some(candidate.coordinates)),
@@ -703,7 +716,11 @@ fn exercise_fixture(
         });
     }
 
-    tool.write_gps(&path, &candidate)?;
+    let outcome = tool.write_gps_with_backup(&path, &candidate, true)?;
+    ensure(
+        outcome.warning.is_none(),
+        format!("RAW backup retention warning: {:?}", outcome.warning),
+    )?;
     times.check(&path, "GPS write")?;
     let updated = find_photo(tool, directory.path(), &path)?;
     times.check(&path, "scan after GPS write")?;
