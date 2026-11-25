@@ -51,9 +51,58 @@ def preserved_read(path, operation):
         os.utime(path, ns=(before.st_atime_ns, after.st_mtime_ns))
 
 
+def _macos_birthtime_ns(path):
+    """Read Darwin birth time as integers; Python 3.12 exposes only a float.
+
+    Apple's attr.h defines attrlist, ATTR_CMN_CRTIME and RETURNED_ATTRS:
+    https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/attr.h
+    getattrlist returns a uint32 byte count, then the requested attributes;
+    RETURNED_ATTRS is a five-uint32 attribute_set and always comes first.
+    https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/getattrlist.2.html
+    """
+    if C.sizeof(C.c_void_p) != 8 or C.sizeof(C.c_long) != 8:
+        raise RuntimeError("Exact Darwin birth-time snapshot requires the supported 64-bit macOS ABI")
+
+    class AttrList(C.Structure):
+        _fields_ = [("bitmapcount", C.c_uint16), ("reserved", C.c_uint16),
+                    ("commonattr", C.c_uint32), ("volattr", C.c_uint32),
+                    ("dirattr", C.c_uint32), ("fileattr", C.c_uint32),
+                    ("forkattr", C.c_uint32)]
+
+    creation_attribute = 0x00000200  # ATTR_CMN_CRTIME
+    returned_attributes = 0x80000000  # ATTR_CMN_RETURNED_ATTRS
+    request = AttrList(5, 0, creation_attribute | returned_attributes, 0, 0, 0, 0)
+    # Packed result: uint32 length + 5 * uint32 masks + 64-bit timespec.
+    # Explicit standard-size unpacking avoids C's implicit alignment padding.
+    data = C.create_string_buffer(40)
+    libc = C.CDLL(None, use_errno=True)
+    try:
+        getattrlist = libc.getattrlist
+    except AttributeError as error:
+        raise RuntimeError("Darwin getattrlist is unavailable; cannot verify exact creation time") from error
+    getattrlist.argtypes = [C.c_char_p, C.POINTER(AttrList), C.c_void_p, C.c_size_t, C.c_ulong]
+    getattrlist.restype = C.c_int
+    if getattrlist(os.fsencode(path), C.byref(request), data, C.sizeof(data), 0) != 0:
+        error = C.get_errno()
+        raise OSError(error, "Cannot read exact Darwin creation time: " + os.strerror(error), str(path))
+    length, common = struct.unpack_from("=II", data.raw)
+    if length < 24 or length > C.sizeof(data):
+        raise RuntimeError(f"Invalid Darwin birth-time attribute buffer length {length}: {path}")
+    if not common & creation_attribute:
+        raise RuntimeError(f"Filesystem did not return Darwin creation time: {path}")
+    if length != 40:
+        raise RuntimeError(f"Incomplete Darwin birth-time timespec ({length} bytes): {path}")
+    seconds, nanos = struct.unpack_from("=qq", data.raw, 24)
+    if not 0 <= nanos < 1_000_000_000:
+        raise RuntimeError(f"Invalid Darwin birth-time nanoseconds {nanos}: {path}")
+    return seconds * 1_000_000_000 + nanos
+
+
 def snapshot(path):
     info = path.stat()
     birth = getattr(info, "st_birthtime_ns", None)
+    if sys.platform == "darwin" and birth is None:
+        birth = _macos_birthtime_ns(path)
     libc = C.CDLL(None, use_errno=True) if sys.platform == "linux" and birth is None else None
     if libc is not None and hasattr(libc, "statx"):
         statx = libc.statx

@@ -503,6 +503,31 @@ def compact_location_point(image, scale):
     return compact_tab_points((*image.size, image.convert('RGB').tobytes()), scale)[2]
 
 
+def record_photo_times(report, stage, paths):
+    # stat only: never read photo contents or restore a baseline while the
+    # application or an OS thumbnail service may still be using the files.
+    observed = {path.name: snapshot(path) for path in paths}
+    report.setdefault('photo_timestamps', {})[stage] = observed
+    return observed
+
+
+def verify_photo_times(report, paths, expected_times):
+    observed = record_photo_times(report, 'after_exit', paths)
+    differences = {}
+    for path in paths:
+        changed = {
+            field: {'expected': value, 'observed': observed[path.name][field]}
+            for field, value in expected_times[path].items()
+            if observed[path.name][field] != value
+        }
+        if changed:
+            differences[path.name] = changed
+    report['photo_timestamp_differences'] = differences
+    if differences:
+        raise AssertionError('Browsing changed photo timestamps/identity: '
+                             + json.dumps(differences, ensure_ascii=False, sort_keys=True))
+
+
 def run(args):
     if sys.platform not in ('win32', 'darwin'):
         raise RuntimeError('Use check_gui.py/check_gui_launch.py for real Linux/X11 captures')
@@ -519,6 +544,9 @@ def run(args):
             photos = temporary / '示例 照片'
             photos.mkdir()
             paths, original, expected_times = fixtures(photos, oracle, documentation=True)
+            report['photo_timestamps'] = {
+                'expected': {path.name: expected_times[path] for path in paths},
+            }
             executable = temporary / binary.name
             shutil.copy2(binary, executable)
             empty = temporary / 'empty-path'
@@ -539,8 +567,10 @@ def run(args):
                     if sys.platform == 'win32':
                         report['window_geometry'] = desktop.preparation
                     settled(application, desktop, main, output / 'initial.png')
+                    record_photo_times(report, 'after_initial_frame', paths)
                     desktop.key('down', window=main)
                     overview = settled(application, desktop, main, output / 'overview.png', require_photo=True)
+                    record_photo_times(report, 'after_photo_preview', paths)
                     report['photo_geometry'] = {'overview': photo_geometry(
                         (*overview.size, overview.convert('RGB').tobytes()), desktop.image_scale(main, overview))}
                     desktop.key('e', window=main)
@@ -549,12 +579,14 @@ def run(args):
                     assert difference.histogram()[255] > overview.width * overview.height * 0.04, 'Editor shortcut did not visibly open its form'
                     desktop.key('escape', window=main)
                     settled(application, desktop, main, output / 'editor-closed.png', require_photo=True)
+                    record_photo_times(report, 'before_native_picker', paths)
                     desktop.key('o', command=True, window=main)
                     native = wait(application, lambda: desktop.native_dialog(main), 'OS-native folder dialog or attached sheet')
                     desktop.focus(native)
                     settled(application, desktop, native, output / 'native-folder-dialog.png')
                     desktop.key('escape', window=native)
                     wait(application, lambda: desktop.native_dialog(main) is None, 'native folder dialog cancellation')
+                    record_photo_times(report, 'after_native_picker', paths)
                     desktop.resize(main, 880, 640)
                     compact = settled(application, desktop, main, output / 'compact-photo.png', require_photo=True)
                     scale = desktop.image_scale(main, compact)
@@ -567,11 +599,13 @@ def run(args):
                     assert x1 <= point[0] <= x2 and y1 <= point[1] <= y2, 'The location tab did not become visibly selected'
                     difference = ImageChops.difference(compact, location).convert('L').point(lambda value: 255 if value > 12 else 0)
                     assert difference.histogram()[255] > compact.width * compact.height * 0.04, 'Compact location tab did not visibly replace the photo view'
+                    record_photo_times(report, 'after_compact_navigation', paths)
                     desktop.key('q', command=True, window=main)
                     assert application.wait(timeout=20) == 0, 'GUI exit was unsuccessful'
+                    verify_photo_times(report, paths, expected_times)
                     for path in paths:
-                        assert snapshot(path) == expected_times[path], 'Browsing changed photo timestamps/identity'
-                        assert preserved_read(path, path.read_bytes) == original[path], 'Browsing changed photo data'
+                        assert preserved_read(path, path.read_bytes) == original[path], f'Browsing changed photo data: {path.name}'
+                        assert snapshot(path) == expected_times[path], f'Photo verification changed timestamps/identity: {path.name}'
                     report.update(real_native_windows=True, status='success', native_picker_cancelled=True,
                                   empty_path=True, untouched_photos=True,
                                   screenshots=['overview.png', 'gps-editor.png', 'native-folder-dialog.png', 'compact-photo.png', 'compact-location.png'])
@@ -579,7 +613,7 @@ def run(args):
                 primary_error = error
                 # Capture before terminating the real window. Diagnostics
                 # must not replace the original automation/acceptance error.
-                if desktop is not None and main is not None:
+                if desktop is not None and main is not None and application.poll() is None:
                     try:
                         desktop.capture(main).save(output / 'failure-main-window.png')
                         report['failure_screenshot'] = 'failure-main-window.png'

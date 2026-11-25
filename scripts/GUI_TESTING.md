@@ -138,6 +138,15 @@ cancels the picker, resizes the real client viewport to 880 × 640, and captures
 its photo and location tabs. It verifies unchanged photo bytes and times. It recognizes
 macOS attached sheets through the actual accessibility tree as well as separate
 windows. The copied application runs outside the checkout with an empty PATH.
+The report records stat-only timestamp snapshots before and after native picker
+use and preview/navigation, followed by exact comparison after the application
+has exited. A failure lists every changed file and field with expected and
+observed nanoseconds/identity; intermediate snapshots are diagnostic because
+an active read may not yet have restored access time. The harness never resets
+the baseline or tolerates a timestamp difference to make the test pass.
+On macOS, the oracle reads creation time through Darwin `getattrlist` when
+Python has no integer `st_birthtime_ns`; it never rounds the floating-point
+`st_birthtime` value or silently skips creation-time verification.
 These captures exercise real rendering and picker cancellation; they do not
 replace platform-specific detached-launch or confirmed-write acceptance.
 
