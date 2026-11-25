@@ -287,16 +287,19 @@ class MacDesktop:
             return other
         # NSOpenPanel can be a native sheet without a separate app-owned
         # CGWindow. Ask the actual accessibility tree, never infer from pixels.
+        # Loop variables are references to list items. Resolve their contents
+        # under System Events, then count the returned lists locally; telling
+        # the process reference to count its sheets fails with AppleScript -1708.
         script = f'''
 tell application "System Events"
-    set targetProcesses to every process whose unix id is {self.pid}
+    set targetProcesses to get every process whose unix id is {self.pid}
     set sheetCount to 0
     repeat with targetProcess in targetProcesses
-        tell targetProcess
-            repeat with currentWindow in (get windows)
-                set sheetCount to sheetCount + (count of sheets of currentWindow)
-            end repeat
-        end tell
+        set targetWindows to get every window of (contents of targetProcess)
+        repeat with currentWindow in targetWindows
+            set windowSheets to get every sheet of (contents of currentWindow)
+            set sheetCount to sheetCount + (length of windowSheets)
+        end repeat
     end repeat
     return sheetCount
 end tell
