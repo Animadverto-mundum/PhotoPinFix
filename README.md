@@ -58,7 +58,9 @@ GUI 需要图形桌面。Linux 使用 X11 / Wayland；Debian / Ubuntu 的 X11 �
 
 ![GPS 编辑框：独立纬度、经度输入及坐标格式选择](docs/images/gps-editor.png)
 
-编辑只暂存建议。按 **Enter** 写入当前照片，**Shift+Enter**（或 **W**）写入当前 session / 全部视图中的候选；两者都会再次确认。写入前保留 `.photopinfix-original` 备份，正常完成时保持照片的创建、修改和访问时间。已有 GPS 不会被覆盖。
+编辑只暂存建议。按 **Enter** 写入当前照片，**Shift+Enter**（或 **W**）写入当前 session / 全部视图中的候选；两者都会再次确认。写入前保留 `.photopinfix-original` 备份，成功写入时保持本次写入前的创建、修改和访问时间。已有 GPS 不会被覆盖。
+
+文件时间保护覆盖 PhotoPinFix 自身的读取和写入。macOS 系统文件夹选择器显示照片时可能更新访问时间；需要保留打开目录前的访问时间时，请通过目录输入框或启动参数指定路径。
 
 桌面界面可直接使用按钮；设置、刷新和返回上级目录位于右上角的 **更多** 菜单。
 

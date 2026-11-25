@@ -539,14 +539,12 @@ def run(args):
     primary_error = None
     try:
         oracle = PortableOracle()
-        with tempfile.TemporaryDirectory(prefix='photopinfix-native-') as folder:
+        with (tempfile.TemporaryDirectory(prefix='photopinfix-native-') as folder,
+              tempfile.TemporaryDirectory(prefix='photopinfix-picker-') as picker_folder):
             temporary = Path(folder)
             photos = temporary / '示例 照片'
-            photos.mkdir()
-            paths, original, expected_times = fixtures(photos, oracle, documentation=True)
-            report['photo_timestamps'] = {
-                'expected': {path.name: expected_times[path] for path in paths},
-            }
+            picker_directory = Path(picker_folder) / '选择文件夹'
+            picker_directory.mkdir()
             executable = temporary / binary.name
             shutil.copy2(binary, executable)
             empty = temporary / 'empty-path'
@@ -560,6 +558,32 @@ def run(args):
                 report['test_opengl'] = windows_test_opengl(args.windows_opengl_dir, temporary, env)
             try:
                 with (output / 'application-stdout.log').open('wb') as stdout, (output / 'application-stderr.log').open('wb') as stderr:
+                    # Native panels can read photo thumbnails in a separate OS
+                    # process and update atime. Exercise that real panel first,
+                    # before any protected photo fixtures exist. Application I/O
+                    # is then checked in a separate process and temporary root.
+                    application = subprocess.Popen([str(executable), '--gui', str(picker_directory)], cwd=temporary, env=env, stdout=stdout, stderr=stderr)
+                    desktop = (WindowsDesktop if sys.platform == 'win32' else MacDesktop)(application.pid, temporary)
+                    main = wait(application, lambda: next(iter(desktop.windows()), None), 'native picker application window')
+                    desktop.prepare(main)
+                    settled(application, desktop, main, output / 'picker-initial.png')
+                    desktop.key('o', command=True, window=main)
+                    native = wait(application, lambda: desktop.native_dialog(main), 'OS-native folder dialog or attached sheet')
+                    desktop.focus(native)
+                    settled(application, desktop, native, output / 'native-folder-dialog.png')
+                    desktop.key('escape', window=native)
+                    wait(application, lambda: desktop.native_dialog(main) is None, 'native folder dialog cancellation')
+                    settled(application, desktop, main, output / 'picker-closed.png')
+                    desktop.key('q', command=True, window=main)
+                    assert application.wait(timeout=20) == 0, 'Native picker application exit was unsuccessful'
+                    report.update(native_picker_cancelled=True, picker_uses_separate_directory=True)
+                    desktop = main = None
+
+                    photos.mkdir()
+                    paths, original, expected_times = fixtures(photos, oracle, documentation=True)
+                    report['photo_timestamps'] = {
+                        'expected': {path.name: expected_times[path] for path in paths},
+                    }
                     application = subprocess.Popen([str(executable), '--gui', str(photos)], cwd=temporary, env=env, stdout=stdout, stderr=stderr)
                     desktop = (WindowsDesktop if sys.platform == 'win32' else MacDesktop)(application.pid, temporary)
                     main = wait(application, lambda: next(iter(desktop.windows()), None), 'native application window')
@@ -579,14 +603,7 @@ def run(args):
                     assert difference.histogram()[255] > overview.width * overview.height * 0.04, 'Editor shortcut did not visibly open its form'
                     desktop.key('escape', window=main)
                     settled(application, desktop, main, output / 'editor-closed.png', require_photo=True)
-                    record_photo_times(report, 'before_native_picker', paths)
-                    desktop.key('o', command=True, window=main)
-                    native = wait(application, lambda: desktop.native_dialog(main), 'OS-native folder dialog or attached sheet')
-                    desktop.focus(native)
-                    settled(application, desktop, native, output / 'native-folder-dialog.png')
-                    desktop.key('escape', window=native)
-                    wait(application, lambda: desktop.native_dialog(main) is None, 'native folder dialog cancellation')
-                    record_photo_times(report, 'after_native_picker', paths)
+                    record_photo_times(report, 'after_editor_cancellation', paths)
                     desktop.resize(main, 880, 640)
                     compact = settled(application, desktop, main, output / 'compact-photo.png', require_photo=True)
                     scale = desktop.image_scale(main, compact)
@@ -607,7 +624,7 @@ def run(args):
                         assert preserved_read(path, path.read_bytes) == original[path], f'Browsing changed photo data: {path.name}'
                         assert snapshot(path) == expected_times[path], f'Photo verification changed timestamps/identity: {path.name}'
                     report.update(real_native_windows=True, status='success', native_picker_cancelled=True,
-                                  empty_path=True, untouched_photos=True,
+                                  empty_path=True, app_io_times_preserved=True, untouched_photos=True,
                                   screenshots=['overview.png', 'gps-editor.png', 'native-folder-dialog.png', 'compact-photo.png', 'compact-location.png'])
             except BaseException as error:
                 primary_error = error
@@ -642,7 +659,9 @@ def run(args):
         raise
     finally:
         (output / 'capture-report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
-        print(json.dumps(report, indent=2, ensure_ascii=False), flush=True)
+        # Redirected Windows stdout may use cp1252; keep the console JSON
+        # ASCII-safe while preserving readable UTF-8 in the report artifact.
+        print(json.dumps(report, indent=2, ensure_ascii=True), flush=True)
 
 
 if __name__ == '__main__':

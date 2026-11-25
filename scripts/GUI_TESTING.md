@@ -132,14 +132,16 @@ and is never copied into the app or corresponding-source packages. This follows
 The screenshot proves rendering on this CI software driver; it does not prove
 compatibility with every user's Windows graphics driver.
 
-The capture sequence records a public landscape photo, the coordinate editor,
-and the OS-native folder dialog (COM on Windows, NSOpenPanel on macOS), then
-cancels the picker, resizes the real client viewport to 880 × 640, and captures
-its photo and location tabs. It verifies unchanged photo bytes and times. It recognizes
+The capture first opens and cancels the OS-native folder dialog (COM on Windows,
+NSOpenPanel on macOS) in an empty disposable directory, then exits that app
+process. Only afterward does it create photo fixtures in a separate temporary
+directory and launch a second app process to capture a public landscape photo,
+the coordinate editor, and photo/location tabs at 880 × 640. It verifies unchanged
+photo bytes and exact times after that process exits. It recognizes
 macOS attached sheets through the actual accessibility tree as well as separate
 windows. The copied application runs outside the checkout with an empty PATH.
-The report records stat-only timestamp snapshots before and after native picker
-use and preview/navigation, followed by exact comparison after the application
+The report records stat-only timestamp snapshots during preview/navigation,
+followed by exact comparison after the application
 has exited. A failure lists every changed file and field with expected and
 observed nanoseconds/identity; intermediate snapshots are diagnostic because
 an active read may not yet have restored access time. The harness never resets
@@ -147,6 +149,14 @@ the baseline or tolerates a timestamp difference to make the test pass.
 On macOS, the oracle reads creation time through Darwin `getattrlist` when
 Python has no integer `st_birthtime_ns`; it never rounds the floating-point
 `st_birthtime` value or silently skips creation-time verification.
+The separation is intentional: a real macOS panel displayed fixture thumbnails
+and changed all five access times during the picker phase, while snapshots
+before opening it matched exactly and modification/creation times and identity
+remained unchanged. System panels may read files outside the app's timestamp
+guards. The report therefore distinguishes `native_picker_cancelled` from
+`app_io_times_preserved`; it does not claim that opening an OS panel on photos
+preserves their access times. Neither check is skipped, and the photo baseline
+is never reset after a read.
 These captures exercise real rendering and picker cancellation; they do not
 replace platform-specific detached-launch or confirmed-write acceptance.
 
