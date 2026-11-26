@@ -395,7 +395,7 @@ post($.kCGEventLeftMouseUp);
     def key(self, name, command=False, window=None):
         if window is not None:
             self.focus(window)
-        code = {'down': 125, 'escape': 53, 'e': 14, 'o': 31, 'q': 12}[name]
+        code = {'down': 125, 'escape': 53, 'e': 14, 'o': 31, 'q': 12, 's': 1}[name]
         self.system_events('tell application "System Events" to key code '
                            + str(code) + (' using {command down}' if command else ''))
         time.sleep(0.2)
